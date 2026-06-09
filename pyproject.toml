@@ -1,0 +1,19 @@
+[project]
+name = "sgl-bench"
+version = "0.1.0"
+description = "Systematic SGLang server-arg search and benchmarking (governed by RFC-0001/RFC-0002)."
+requires-python = ">=3.10"
+dependencies = [
+    "pydantic>=2",
+    "pyyaml>=6",
+]
+
+[project.scripts]
+argsearch-generate = "sglbench.argsearch.generate:main"
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["sglbench", "sglbench.argsearch"]

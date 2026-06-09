@@ -1,3 +1,11 @@
 # govctl local state
 .govctl.lock
 .govctl/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+build/
+dist/

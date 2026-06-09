@@ -1,0 +1,81 @@
+# Versioned source of truth for the Nemotron-3-Ultra-550B server-arg search.
+# Implements [[RFC-0001:C-CONFIG-SOURCE]]. Seeded from prior perf logs
+# (2026-06-05/07/08 Nemotron-v3). Restart-required server args only; workload
+# axes below are the inner loop ([[RFC-0001:C-LOOP-STRUCTURE]]) and are not permuted.
+#
+# Add an `fp8` precision branch as a sibling under precision_branches when that
+# checkpoint is seeded; precision is a branch, not a candidate axis
+# ([[RFC-0001:C-PRECISION-BRANCH]]).
+
+model: nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-NVFP4
+
+workload_axes:
+  context_length: 131072
+  isl_osl_pairs:
+    - [8192, 1024]
+    - [60000, 20]
+    - [8192, 65536]
+  concurrency: [1, 8, 32, 128, 256, 512]
+  note: "Swept against a live server (genai-bench / bench_one_batch_server); not part of restart-required permutations."
+
+precision_branches:
+  - name: nvfp4
+    checkpoint: nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-NVFP4
+    hardware: 4xB200 single-node TP4
+
+    # Known-best, never varied.
+    fixed:
+      quantization: modelopt_fp4
+      trust-remote-code: true
+      attention-backend: trtllm_mha
+      mamba-backend: flashinfer
+      context-length: 131072
+      tensor-parallel-size: 4
+
+    # Varied during the search (<= 10, per C-SCOPE).
+    candidate:
+      - name: mem-fraction-static       # total static budget; couples with scheduler strategy
+        values: [0.90, 0.95]
+      - name: mamba-scheduler-strategy  # slots reserved per running req (ratio); couples with radix + mem-fraction
+        values: [no_buffer, extra_buffer, extra_buffer_lazy]
+      - name: mamba-ssm-dtype           # bf16 ~halves ssm-state vs fp32 -> bs-cap lever
+        values: [float32, bfloat16]
+      - name: mamba-full-memory-ratio   # mamba-vs-KV split inside rest_memory -> bs-cap lever
+        values: [0.7, 0.9]
+      - name: kv-cache-dtype
+        values: [auto, fp8_e4m3]
+      - name: cuda-graph-max-bs         # must cover served bs or decode falls to eager
+        values: [256, 512]
+      - name: chunked-prefill-size
+        values: [8192, 16384]
+      - name: ep-size                   # MoE expert parallelism; coupled with moe-a2a-backend
+        values: [1, 4]
+      - name: moe-a2a-backend
+        values: [none, deepep]
+
+    # Illegal combinations pruned before launch (C-CONFIG-SOURCE). ep-size and
+    # moe-a2a-backend are a coupled pair: EP4 needs the deepep all-to-all, and a
+    # non-EP run must not request it. OFAT cannot reach EP4 by a single change, so
+    # this pair belongs in the focused grid (C-SEARCH-STRATEGY).
+    constraints:
+      - name: ep4-requires-deepep
+        description: "EP4 requires the deepep MoE all-to-all backend."
+        when: {ep-size: [4]}
+        require: {moe-a2a-backend: [deepep]}
+      - name: no-ep-forbids-deepep
+        description: "Without expert parallelism, the deepep all-to-all backend is invalid."
+        when: {ep-size: [1]}
+        forbid: {moe-a2a-backend: [deepep]}
+
+    # Strong known-good starting point (PID 4467 baseline: TP4, extra_buffer_lazy,
+    # mem-frac 0.95, trtllm_mha, fp8 KV, cuda-graph-max-bs 256).
+    baseline:
+      mem-fraction-static: 0.95
+      mamba-scheduler-strategy: extra_buffer_lazy
+      mamba-ssm-dtype: bfloat16
+      mamba-full-memory-ratio: 0.9
+      kv-cache-dtype: fp8_e4m3
+      cuda-graph-max-bs: 256
+      chunked-prefill-size: 16384
+      ep-size: 1
+      moe-a2a-backend: none

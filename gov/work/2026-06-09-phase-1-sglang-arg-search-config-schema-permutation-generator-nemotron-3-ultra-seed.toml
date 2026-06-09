@@ -1,0 +1,49 @@
+#:schema ../schema/work.schema.json
+
+[govctl]
+id = "WI-2026-06-09-001"
+title = "Phase 1: SGLang arg-search config schema + permutation generator (Nemotron-3-Ultra seed)"
+status = "done"
+created = "2026-06-09"
+started = "2026-06-09"
+completed = "2026-06-09"
+refs = [
+    "RFC-0001:C-SCOPE",
+    "RFC-0001:C-CONFIG-SOURCE",
+    "RFC-0001:C-PRECISION-BRANCH",
+    "RFC-0001:C-SEARCH-STRATEGY",
+    "RFC-0001:C-MEASUREMENT",
+]
+
+[content]
+description = "Build the Phase 1 scaffold for the SGLang server-arg search per RFC-0001: a versioned YAML config (precision branches + fixed/candidate/constraint buckets) and a permutation generator that emits only constraint-valid restart-required configs in OFAT and focused-grid modes. Seed with the real Nemotron-3-Ultra-550B NVFP4 arg set and known-good baseline from the prior perf logs. This is the source-of-truth config layer the outer driver loop will consume."
+
+[[content.acceptance_criteria]]
+text = "govctl check passes"
+status = "done"
+category = "chore"
+
+[[content.acceptance_criteria]]
+text = "YAML config schema models precision branches and fixed/candidate/constraint buckets, validating every candidate is in exactly one bucket, candidate count <= 10, and spec-decode is rejected (RFC-0001:C-SCOPE, C-PRECISION-BRANCH, C-CONFIG-SOURCE)"
+status = "done"
+category = "added"
+
+[[content.acceptance_criteria]]
+text = "Permutation generator supports OFAT and focused-grid modes and emits only constraint-valid configs with prune rules applied (RFC-0001:C-CONFIG-SOURCE, C-SEARCH-STRATEGY)"
+status = "done"
+category = "added"
+
+[[content.acceptance_criteria]]
+text = "Versioned nemotron_v3_ultra.yaml seeded with real fixed args, known-good baseline, and candidate levers from prior perf logs"
+status = "done"
+category = "added"
+
+[[content.acceptance_criteria]]
+text = "unit tests cover bucket validation, spec-decode rejection, OFAT config count, and constraint pruning"
+status = "done"
+category = "chore"
+
+[[content.acceptance_criteria]]
+text = "each config point renders to an SGLang CLI arg string and a content hash for provenance (RFC-0001:C-MEASUREMENT)"
+status = "done"
+category = "added"
