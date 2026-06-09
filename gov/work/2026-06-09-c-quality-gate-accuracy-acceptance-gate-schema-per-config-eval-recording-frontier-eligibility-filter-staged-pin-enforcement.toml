@@ -1,0 +1,48 @@
+#:schema ../schema/work.schema.json
+
+[govctl]
+id = "WI-2026-06-09-010"
+title = "C-QUALITY-GATE: accuracy acceptance gate — schema, per-config eval recording, frontier eligibility filter, staged pin enforcement"
+status = "done"
+created = "2026-06-09"
+started = "2026-06-09"
+completed = "2026-06-09"
+refs = ["RFC-0001"]
+
+[content]
+description = "Implement RFC-0001:C-QUALITY-GATE (v0.3.0). A per-branch accuracy acceptance gate (dataset + threshold, defined before the search) excludes failing configs from the acceptable results (the Pareto frontier) at every search stage, while their measurements are still recorded and flagged (quality_pass) in the same results stream for speed/quality trade-off inspection. Accuracy is evaluated once per launched config via an AccuracyEvaluator protocol (abstracted like BenchClient, no GPU in tests) and stamped onto each inner-point record."
+
+[[content.acceptance_criteria]]
+text = "govctl check passes"
+status = "done"
+category = "chore"
+
+[[content.acceptance_criteria]]
+text = "SearchConfig schema gains a validated quality_gate (dataset, metric, threshold, direction) with a passes(score) decision"
+status = "done"
+category = "added"
+
+[[content.acceptance_criteria]]
+text = "measurement records carry a per-config accuracy result + quality_pass flag; driver evaluates accuracy once per config via an AccuracyEvaluator protocol"
+status = "done"
+category = "added"
+
+[[content.acceptance_criteria]]
+text = "objective excludes gate-failing configs from the acceptable results while retaining them flagged in the record stream, and reports a branch with no eligible config as having no acceptable configuration"
+status = "done"
+category = "added"
+
+[[content.acceptance_criteria]]
+text = "a check rejects pinning a non-gridded arg to a value whose OFAT config failed the gate (C-SEARCH-STRATEGY interaction)"
+status = "done"
+category = "added"
+
+[[content.acceptance_criteria]]
+text = "tests cover gate schema validation, quality_pass recording, frontier exclusion + no-acceptable-config reporting, and the pin-gate check"
+status = "done"
+category = "chore"
+
+[[content.acceptance_criteria]]
+text = "compliance-checker finds no Critical C-QUALITY-GATE gap"
+status = "done"
+category = "chore"

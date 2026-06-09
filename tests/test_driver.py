@@ -7,6 +7,7 @@ from pathlib import Path
 from sglbench.argsearch.driver import run_search, workload_points, write_results
 from sglbench.argsearch.generate import ConfigPoint
 from sglbench.argsearch.measure import WorkloadPoint
+from sglbench.argsearch.schema import QualityGate
 
 AXES = {
     "isl_osl_pairs": [[8192, 1024], [60000, 20]],
@@ -108,6 +109,32 @@ class DriverTest(unittest.TestCase):
             path = write_results(results, d)
             lines = Path(path).read_text().splitlines()
             self.assertEqual(len(lines), len(results))
+
+    def test_no_gate_leaves_accuracy_unset(self):
+        mgr = FakeManager()
+        results = run_search(POINTS, workload_points(AXES), mgr)
+        self.assertTrue(all(r.accuracy is None and r.quality_pass is None for r in results))
+
+
+GATE = QualityGate(dataset="gpqa", metric="accuracy", threshold=0.45, direction="higher")
+
+
+class GateStampingTest(unittest.TestCase):
+    def test_evaluates_once_per_config_and_stamps_every_record(self):
+        mgr = FakeManager()
+        eval_calls = []
+
+        def evaluate(session):
+            eval_calls.append(session.args["attention-backend"])
+            score = 0.6 if session.args["attention-backend"] == "trtllm_mha" else 0.3
+            return {"accuracy": score}
+
+        results = run_search(POINTS, workload_points(AXES), mgr, gate=GATE, evaluate=evaluate)
+        self.assertEqual(eval_calls, ["trtllm_mha", "flashinfer"])
+        good = [r for r in results if r.config_hash == POINTS[0].config_hash]
+        bad = [r for r in results if r.config_hash == POINTS[1].config_hash]
+        self.assertTrue(all(r.accuracy == {"accuracy": 0.6} and r.quality_pass for r in good))
+        self.assertTrue(all(r.accuracy == {"accuracy": 0.3} and not r.quality_pass for r in bad))
 
 
 if __name__ == "__main__":

@@ -8,7 +8,7 @@ a search axis ([[RFC-0001:C-PRECISION-BRANCH]]).
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -251,10 +251,28 @@ class SLO(BaseModel):
         return self.ttft_p95_ms
 
 
+class QualityGate(BaseModel):
+    """Accuracy acceptance gate ([[RFC-0001:C-QUALITY-GATE]]): its pass/fail threshold and
+    evaluation dataset are defined before the search and evaluated per precision branch."""
+
+    dataset: str
+    metric: str = "accuracy"
+    threshold: float
+    direction: Literal["higher", "lower"] = "higher"
+
+    def passes(self, score: float | None) -> bool:
+        if score is None:
+            return False
+        if self.direction == "higher":
+            return score >= self.threshold
+        return score <= self.threshold
+
+
 class SearchConfig(BaseModel):
     model: str
     workload_axes: dict[str, Any] = Field(default_factory=dict)
     slo: SLO | None = None
+    quality_gate: QualityGate | None = None
     precision_branches: list[PrecisionBranch] = Field(min_length=1)
 
     @model_validator(mode="after")

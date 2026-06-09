@@ -47,11 +47,19 @@ class MyBenchClient:
   "metrics": {"ttft_p95": {"mean": ..., "median": ..., "n": 2}, ...},  # aggregated across repeats
   "repeats": [ {...}, {...} ],                                          # raw per-repeat metrics
   "environment": {...},                                                 # see below
+  "accuracy": {"accuracy": 0.61},                                       # gate score, or null
+  "quality_pass": true,                                                 # gate verdict, or null
 }
 ```
 
 Aggregation reports `mean`/`median`/`n` per metric key present in every repeat; raw repeats
 are retained alongside.
+
+`accuracy` and `quality_pass` carry the accuracy-acceptance-gate result (RFC-0001:C-QUALITY-GATE).
+They are a **per-config** property — scored once per launched config by the driver via an
+`AccuracyEvaluator` (analogous to `BenchClient`) and stamped onto every record for that config;
+both are `null` on an ungated run. The objective excludes gate-failing records from the frontier
+while keeping them in the stream.
 
 ## Environment provenance
 

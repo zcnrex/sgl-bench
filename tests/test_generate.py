@@ -5,7 +5,11 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import yaml
+
+from sglbench.argsearch import generate as gen
 from sglbench.argsearch.generate import (
+    _assemble,
     config_hash,
     focused_grid_manifest,
     generate_grid,
@@ -16,6 +20,18 @@ from sglbench.argsearch.generate import (
     write_grid_manifest,
 )
 from sglbench.argsearch.schema import SearchConfig
+
+GATED_DOC = {
+    "model": "m",
+    "quality_gate": {"dataset": "d", "metric": "accuracy", "threshold": 0.5},
+    "precision_branches": [{
+        "name": "b",
+        "fixed": {"quantization": "modelopt_fp4"},
+        "candidate": [{"name": "g", "values": [1, 2]}, {"name": "p", "values": ["lo", "hi"]}],
+        "baseline": {"g": 1, "p": "lo"},
+        "focused_grid": {"args": ["g"], "rationale": "g interacts", "pins": {"p": "hi"}},
+    }],
+}
 
 CONFIG = Path(__file__).resolve().parents[1] / "configs" / "nemotron_v3_ultra.yaml"
 
@@ -150,6 +166,41 @@ class GenerateTest(unittest.TestCase):
         self.assertIn("--quantization modelopt_fp4", cli)
         self.assertIn("--trust-remote-code", cli)        # bool flag
         self.assertNotIn("moe-a2a-backend", cli)         # baseline value "none" -> omitted
+
+
+class GridGateEnforcementTest(unittest.TestCase):
+    def _setup(self, tmp, quality_pass):
+        cfgp = Path(tmp) / "c.yaml"
+        cfgp.write_text(yaml.safe_dump(GATED_DOC))
+        branch = load_config(cfgp).branch("b")
+        pin_hash = config_hash(_assemble(branch, {"p": "hi"}))
+        resp = Path(tmp) / "results.jsonl"
+        resp.write_text(json.dumps(
+            {"config_hash": pin_hash, "branch": "b", "label": "p=hi", "quality_pass": quality_pass}
+        ) + "\n")
+        return cfgp, resp
+
+    def test_grid_blocks_pin_whose_ofat_failed_gate(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cfgp, resp = self._setup(tmp, quality_pass=False)
+            with self.assertRaises(SystemExit):
+                gen.main(["--config", str(cfgp), "--branch", "b", "--mode", "grid",
+                          "--results", str(resp)])
+
+    def test_grid_allows_pin_whose_ofat_passed_gate(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cfgp, resp = self._setup(tmp, quality_pass=True)
+            rc = gen.main(["--config", str(cfgp), "--branch", "b", "--mode", "grid",
+                           "--results", str(resp)])
+            self.assertEqual(rc, 0)
+
+    def test_grid_emits_when_no_results_present(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cfgp = Path(tmp) / "c.yaml"
+            cfgp.write_text(yaml.safe_dump(GATED_DOC))
+            rc = gen.main(["--config", str(cfgp), "--branch", "b", "--mode", "grid",
+                           "--results", str(Path(tmp) / "absent.jsonl")])
+            self.assertEqual(rc, 0)
 
 
 if __name__ == "__main__":

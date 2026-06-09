@@ -17,7 +17,7 @@ from __future__ import annotations
 import json
 from dataclasses import asdict
 from pathlib import Path
-from typing import Iterable, Protocol, runtime_checkable
+from typing import Callable, Iterable, Protocol, runtime_checkable
 
 from .generate import ConfigPoint
 from .measure import (
@@ -27,6 +27,7 @@ from .measure import (
     WorkloadPoint,
     measure_point,
 )
+from .schema import QualityGate
 
 
 @runtime_checkable
@@ -72,23 +73,36 @@ def run_search(
     manager: ServerManager,
     *,
     repeats: int = MIN_REPEATS,
+    gate: QualityGate | None = None,
+    evaluate: Callable[[ServerSession], dict[str, float]] | None = None,
 ) -> list[MeasurementResult]:
-    """Drive the outer/inner search and return one MeasurementResult per inner point."""
+    """Drive the outer/inner search and return one MeasurementResult per inner point.
+
+    When a `gate` and an `evaluate` callable are supplied, accuracy is scored once per
+    launched configuration and every inner-point record for that config is stamped with
+    the score and the gate verdict ([[RFC-0001:C-QUALITY-GATE]]).
+    """
     workload = list(workload)
     results: list[MeasurementResult] = []
     for cp in points:
         session = manager.launch(cp.args)
         try:
+            accuracy = None
+            quality_pass = None
+            if gate is not None and evaluate is not None:
+                accuracy = evaluate(session)
+                quality_pass = gate.passes(accuracy.get(gate.metric))
             for wp in workload:
-                results.append(
-                    measure_point(
-                        session.client,
-                        config_hash=cp.config_hash,
-                        branch=cp.branch,
-                        point=wp,
-                        repeats=repeats,
-                    )
+                res = measure_point(
+                    session.client,
+                    config_hash=cp.config_hash,
+                    branch=cp.branch,
+                    point=wp,
+                    repeats=repeats,
                 )
+                res.accuracy = accuracy
+                res.quality_pass = quality_pass
+                results.append(res)
         finally:
             session.shutdown()
     return results

@@ -7,12 +7,18 @@ from pathlib import Path
 from sglbench.argsearch.objective import (
     FrontierEntry,
     build_frontier,
+    gate_failed_pins,
     pareto_frontier,
+    passes_quality_gate,
     passes_slo,
+    record_quality_pass,
     to_entry,
     write_frontier,
 )
-from sglbench.argsearch.schema import SLO, SLOOverride
+from sglbench.argsearch.generate import _assemble, config_hash
+from sglbench.argsearch.schema import SLO, QualityGate, SearchConfig, SLOOverride
+
+GATE = QualityGate(dataset="gpqa", metric="accuracy", threshold=0.45, direction="higher")
 
 SLO_GLOBAL = SLO(per_token_ms=40, ttft_p95_ms=5000)
 SLO_OVERRIDE = SLO(
@@ -133,6 +139,106 @@ class BuildFrontierTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             path = write_frontier(frontier, Path(d) / "frontier.jsonl")
             self.assertEqual(len(Path(path).read_text().splitlines()), 1)
+
+
+def gated_rec(h, *, ptok=20, decode_thr=1600, accuracy=None, quality_pass=None, branch="nvfp4"):
+    r = rec(h, 8192, 1024, 32, 3000, ptok, decode_thr, branch=branch)
+    if accuracy is not None:
+        r["accuracy"] = {"accuracy": accuracy}
+    if quality_pass is not None:
+        r["quality_pass"] = quality_pass
+    return r
+
+
+class QualityGateTest(unittest.TestCase):
+    def test_passes_higher_direction(self):
+        self.assertTrue(GATE.passes(0.45))
+        self.assertTrue(GATE.passes(0.9))
+        self.assertFalse(GATE.passes(0.44))
+        self.assertFalse(GATE.passes(None))
+
+    def test_passes_lower_direction(self):
+        ppl = QualityGate(dataset="d", metric="perplexity", threshold=10.0, direction="lower")
+        self.assertTrue(ppl.passes(9.5))
+        self.assertFalse(ppl.passes(10.5))
+
+    def test_no_gate_admits_all(self):
+        self.assertTrue(passes_quality_gate(gated_rec("a"), None))
+
+    def test_stamped_flag_is_trusted(self):
+        self.assertTrue(passes_quality_gate(gated_rec("a", quality_pass=True), GATE))
+        self.assertFalse(passes_quality_gate(gated_rec("a", quality_pass=False), GATE))
+
+    def test_recompute_from_accuracy_when_no_flag(self):
+        self.assertTrue(record_quality_pass(gated_rec("a", accuracy=0.6), GATE))
+        self.assertFalse(record_quality_pass(gated_rec("a", accuracy=0.3), GATE))
+
+    def test_missing_accuracy_fails(self):
+        self.assertFalse(passes_quality_gate(gated_rec("a"), GATE))
+
+
+class GateFrontierTest(unittest.TestCase):
+    GOOD = dict(ptok=20, decode_thr=1600, quality_pass=True)
+    FAST_BAD = dict(ptok=15, decode_thr=900, quality_pass=False)
+
+    def test_gate_failing_excluded_from_frontier(self):
+        records = [gated_rec("good", **self.GOOD), gated_rec("fast-bad", **self.FAST_BAD)]
+        _, frontier = build_frontier(records, SLO_GLOBAL, gate=GATE)
+        hashes = {e.config_hash for e in frontier}
+        self.assertIn("good", hashes)
+        self.assertNotIn("fast-bad", hashes)
+
+    def test_no_gate_keeps_both(self):
+        records = [gated_rec("good", **self.GOOD), gated_rec("fast-bad", **self.FAST_BAD)]
+        _, frontier = build_frontier(records, SLO_GLOBAL, gate=None)
+        self.assertEqual({e.config_hash for e in frontier}, {"good", "fast-bad"})
+
+    def test_all_fail_yields_empty_frontier(self):
+        records = [gated_rec("bad", quality_pass=False)]
+        _, frontier = build_frontier(records, SLO_GLOBAL, gate=GATE)
+        self.assertEqual(frontier, [])
+
+    def test_entry_carries_accuracy_and_flag(self):
+        e = to_entry(gated_rec("a", accuracy=0.6, quality_pass=True))
+        self.assertEqual(e.accuracy, {"accuracy": 0.6})
+        self.assertTrue(e.quality_pass)
+
+
+class GateFailedPinsTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.branch = SearchConfig.model_validate({
+            "model": "m",
+            "precision_branches": [{
+                "name": "b",
+                "fixed": {"quantization": "modelopt_fp4"},
+                "candidate": [
+                    {"name": "g", "values": [1, 2]},
+                    {"name": "p", "values": ["lo", "hi"]},
+                ],
+                "baseline": {"g": 1, "p": "lo"},
+                "focused_grid": {"args": ["g"], "rationale": "g interacts", "pins": {"p": "hi"}},
+            }],
+        }).branch("b")
+
+    def _pin_hash(self):
+        return config_hash(_assemble(self.branch, {"p": "hi"}))
+
+    def test_pin_with_failing_ofat_flagged(self):
+        records = [{"config_hash": self._pin_hash(), "branch": "b", "label": "p=hi",
+                    "quality_pass": False}]
+        offenders = gate_failed_pins(self.branch, records, GATE)
+        self.assertEqual(len(offenders), 1)
+        self.assertEqual(offenders[0]["arg"], "p")
+        self.assertEqual(offenders[0]["value"], "hi")
+
+    def test_pin_with_passing_ofat_ok(self):
+        records = [{"config_hash": self._pin_hash(), "branch": "b", "label": "p=hi",
+                    "quality_pass": True}]
+        self.assertEqual(gate_failed_pins(self.branch, records, GATE), [])
+
+    def test_pin_without_record_not_flagged(self):
+        self.assertEqual(gate_failed_pins(self.branch, [], GATE), [])
 
 
 if __name__ == "__main__":

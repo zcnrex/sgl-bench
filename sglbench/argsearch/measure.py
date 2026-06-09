@@ -91,6 +91,18 @@ class BenchClient(Protocol):
         """Run one recorded pass and return its metrics."""
 
 
+@runtime_checkable
+class AccuracyEvaluator(Protocol):
+    """Accuracy-gate evaluator bound to a live server ([[RFC-0001:C-QUALITY-GATE]]).
+
+    Evaluated once per launched configuration, not per workload point. Implementations
+    wrap the real accuracy harness; returns metric -> score on the gate's dataset.
+    """
+
+    def evaluate(self) -> dict[str, float]:
+        """Score the live server on the gate's evaluation dataset."""
+
+
 def _bench_tool(client: BenchClient) -> str | None:
     return getattr(client, "tool", None)
 
@@ -105,6 +117,8 @@ class MeasurementResult:
     repeats: list[dict]  # raw per-repeat metrics
     environment: dict
     bench_tool: str | None = None
+    accuracy: dict | None = None
+    quality_pass: bool | None = None
 
     def to_record(self) -> dict:
         return asdict(self)

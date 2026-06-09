@@ -179,6 +179,12 @@ def main(argv=None) -> int:
     p.add_argument("--branch", required=True, help="Precision branch name")
     p.add_argument("--mode", choices=["ofat", "grid"], default="ofat")
     p.add_argument("--grid-args", nargs="+", default=[], help="Candidate names for --mode grid")
+    p.add_argument(
+        "--results",
+        default=f"{DEFAULT_OUT_DIR}/results.jsonl",
+        help="OFAT results JSONL; when present and a quality_gate is defined, --mode grid "
+        "refuses pins whose OFAT config failed the gate (C-QUALITY-GATE)",
+    )
     p.add_argument("--format", choices=["label", "cli", "json"], default="label")
     p.add_argument(
         "--save",
@@ -207,6 +213,19 @@ def main(argv=None) -> int:
                 f"--grid-args {list(a.grid_args)} does not match the branch's declared "
                 f"focused_grid.args {grid_names}; edit the config to change the admitted set"
             )
+        if cfg.quality_gate is not None and Path(a.results).exists():
+            from .objective import gate_failed_pins, load_results
+
+            offenders = gate_failed_pins(branch, load_results(a.results), cfg.quality_gate)
+            if offenders:
+                detail = "; ".join(
+                    f"{o['arg']}={o['value']} ({o['config_hash']})" for o in offenders
+                )
+                p.error(
+                    f"focused_grid pins a value whose OFAT config failed the accuracy gate "
+                    f"(C-QUALITY-GATE): {detail}. Re-pin to a gate-passing OFAT-best; if none "
+                    f"exists, branch '{a.branch}' has no acceptable configuration."
+                )
         points = generate_grid(branch, grid_names)
         print(f"# focused grid: {grid_names}\n# rationale: {fg.rationale}")
 

@@ -27,6 +27,26 @@ slo:
 A workload pair with no override inherits the global gate. `ttft_p95_ms` is optional; when
 omitted, TTFT is still reported per point but no target is shown.
 
+## The accuracy gate (RFC-0001:C-QUALITY-GATE)
+
+An optional `quality_gate`, also defined before the search, excludes quality-degraded configs
+from the **acceptable results** (the frontier) — at every stage, never bought back by speed:
+
+```yaml
+quality_gate:
+  dataset: gpqa_diamond
+  metric: accuracy
+  threshold: 0.45
+  direction: higher        # score >= threshold passes; use "lower" for e.g. perplexity
+```
+
+Accuracy is evaluated once per launched config (the driver's `evaluate` callback) and stamped
+onto every record as `accuracy` + a `quality_pass` flag. A config that fails the gate is
+**dropped from the frontier but kept in `results.jsonl`**, flagged, and listed under
+`quality-excluded` so the speed-versus-quality trade-off stays inspectable. If a branch has no
+eligible config, it is reported as having **no acceptable configuration** rather than emitting a
+degraded one. When no `quality_gate` is defined, the filter is skipped (with a notice).
+
 ## Run it
 
 ```bash
@@ -49,7 +69,11 @@ highest raw throughput but a violated decode ITL is **dropped**. Flags: `--branc
 1. **Decode SLO filter.** For each record, the decode per-token latency (ITL) for the record's
    `(isl, osl)` must be within the gate. TTFT is ignored for filtering. A record missing the
    decode latency is excluded.
-2. **Pareto frontier.** Over the survivors, a point dominates another when it is no worse on
+2. **Accuracy gate filter.** When a `quality_gate` is defined, a record must also clear it
+   (trusting the stamped `quality_pass`, else recomputed from `accuracy`; a record with no
+   accuracy score fails). Gate-failing records are excluded from the frontier but retained,
+   flagged, in the record stream.
+3. **Pareto frontier.** Over the survivors, a point dominates another when it is no worse on
    both axes (decode throughput up, decode ITL down) and strictly better on at least one. The
    frontier is the non-dominated set, ranked by decode throughput. Because batch size /
    concurrency varies across points, decode throughput (aggregate) and ITL (per-user) form a
@@ -76,5 +100,6 @@ from sglbench.argsearch import load_config, load_results, build_frontier
 
 cfg = load_config("configs/nemotron_v3_ultra.yaml")
 records = load_results("out/results.jsonl")
-passing, frontier = build_frontier(records, cfg.slo, branch="nvfp4", stat="median")
+passing, frontier = build_frontier(records, cfg.slo, branch="nvfp4", stat="median",
+                                   gate=cfg.quality_gate)
 ```

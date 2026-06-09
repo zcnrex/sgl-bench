@@ -40,6 +40,16 @@ slo:
     - {isl: 60000, osl: 20, per_token_ms: 80}
     - {isl: 64000, osl: 1024, per_token_ms: 80}
 
+# Accuracy acceptance gate ([[RFC-0001:C-QUALITY-GATE]]). Defined before the search and
+# evaluated per precision branch; a config below the threshold is excluded from the
+# acceptable results but still recorded and flagged for trade-off inspection. PHASE-0 SEED
+# VALUES — set dataset and threshold to the real quality bar before relying on the gate.
+quality_gate:
+  dataset: gpqa_diamond
+  metric: accuracy
+  threshold: 0.45
+  direction: higher
+
 precision_branches:
   - name: nvfp4
     checkpoint: nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-NVFP4

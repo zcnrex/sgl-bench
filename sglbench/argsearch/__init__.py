@@ -4,6 +4,7 @@ from .schema import (
     Constraint,
     FocusedGrid,
     PrecisionBranch,
+    QualityGate,
     SLOOverride,
     SearchConfig,
 )
@@ -21,6 +22,7 @@ from .generate import (
     write_grid_manifest,
 )
 from .measure import (
+    AccuracyEvaluator,
     BenchClient,
     MeasurementResult,
     WorkloadPoint,
@@ -46,9 +48,12 @@ from .sglang_adapter import (
 from .objective import (
     FrontierEntry,
     build_frontier,
+    gate_failed_pins,
     load_results,
     pareto_frontier,
+    passes_quality_gate,
     passes_slo,
+    record_quality_pass,
     write_frontier,
 )
 
@@ -59,6 +64,7 @@ __all__ = [
     "Constraint",
     "FocusedGrid",
     "PrecisionBranch",
+    "QualityGate",
     "SearchConfig",
     "ConfigPoint",
     "args_to_cli",
@@ -71,6 +77,7 @@ __all__ = [
     "load_config",
     "write_dir",
     "write_grid_manifest",
+    "AccuracyEvaluator",
     "BenchClient",
     "MeasurementResult",
     "WorkloadPoint",
@@ -90,8 +97,11 @@ __all__ = [
     "record_to_metrics",
     "FrontierEntry",
     "build_frontier",
+    "gate_failed_pins",
     "load_results",
     "pareto_frontier",
+    "passes_quality_gate",
     "passes_slo",
+    "record_quality_pass",
     "write_frontier",
 ]

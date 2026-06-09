@@ -133,6 +133,24 @@ class SchemaTest(unittest.TestCase):
                 "focused_grid": {"args": ["a"], "rationale": "x"},
             })
 
+    def test_quality_gate_loads(self):
+        cfg = SearchConfig.model_validate({
+            "model": "m",
+            "quality_gate": {"dataset": "gpqa", "threshold": 0.45},
+            "precision_branches": [_branch()],
+        })
+        self.assertEqual(cfg.quality_gate.dataset, "gpqa")
+        self.assertEqual(cfg.quality_gate.metric, "accuracy")
+        self.assertEqual(cfg.quality_gate.direction, "higher")
+
+    def test_quality_gate_rejects_bad_direction(self):
+        with self.assertRaises(ValidationError):
+            SearchConfig.model_validate({
+                "model": "m",
+                "quality_gate": {"dataset": "d", "threshold": 1.0, "direction": "sideways"},
+                "precision_branches": [_branch()],
+            })
+
 
 if __name__ == "__main__":
     unittest.main()

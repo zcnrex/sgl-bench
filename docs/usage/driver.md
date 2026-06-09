@@ -31,6 +31,11 @@ write_results(results, "out")                         # -> out/results.jsonl
 session, then calls `session.shutdown()` (in a `finally`) before the next config launches.
 It returns one `MeasurementResult` per `(config, workload-point)` — see [measure.md](measure.md).
 
+Pass `gate=cfg.quality_gate` and an `evaluate(session) -> {metric: score}` callback to score
+the accuracy gate **once per launched config** (RFC-0001:C-QUALITY-GATE); every record for
+that config is then stamped with its `accuracy` and `quality_pass`. Omit them and both stay
+`None` (an ungated run). The objective ([objective.md](objective.md)) applies the gate.
+
 ## Server lifecycle contract
 
 Server launch is abstracted behind two protocols so the orchestration is testable without a

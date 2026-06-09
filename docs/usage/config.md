@@ -31,6 +31,10 @@ slo:                          # decode-first objective; gate = per-token ITL (RF
   ttft_p95_ms: 5000           # report-only target; never excludes a config
   overrides:                  # per-(isl,osl): decode ITL grows with context length
     - {isl: 60000, osl: 20, per_token_ms: 80}
+quality_gate:                 # accuracy acceptance gate (RFC-0001:C-QUALITY-GATE)
+  dataset: gpqa_diamond
+  metric: accuracy
+  threshold: 0.45             # score >= threshold passes (direction: higher | lower)
 precision_branches:
   - name: nvfp4
     checkpoint: nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-NVFP4
@@ -57,6 +61,12 @@ The `slo` block defines the **decode-first** objective (RFC-0001:C-OBJECTIVE): t
 `per_token_ms` (decode inter-token latency); `ttft_p95_ms` is a report-only target that
 never excludes a config. Because decode ITL grows with context length, long-context iter
 pairs typically need a relaxed `per_token_ms` override. See [objective.md](objective.md).
+
+The optional `quality_gate` block defines the **accuracy acceptance gate**
+(RFC-0001:C-QUALITY-GATE): `dataset` + `threshold` (+ `metric`, `direction`), defined before
+the search and evaluated per branch. A config below the bar is excluded from the acceptable
+results at every stage but still recorded and flagged (`quality_pass`) for trade-off
+inspection — see [objective.md](objective.md).
 
 ## Validate
 
