@@ -9,3 +9,6 @@ __pycache__/
 .pytest_cache/
 build/
 dist/
+
+# Generated arg-search configs (argsearch --out-dir)
+out/

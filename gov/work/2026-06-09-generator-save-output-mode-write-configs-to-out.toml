@@ -1,0 +1,40 @@
+#:schema ../schema/work.schema.json
+
+[govctl]
+id = "WI-2026-06-09-003"
+title = "Generator --save output mode (write configs to out/)"
+status = "active"
+created = "2026-06-09"
+started = "2026-06-09"
+refs = [
+    "RFC-0001:C-CONFIG-SOURCE",
+    "RFC-0001:C-MEASUREMENT",
+]
+
+[content]
+description = "Add a --save flag to the arg-search generator that writes one <config_hash>.json per config plus an index.jsonl manifest to out/, creating the directory automatically (no mkdir). The hash-named files are the config provenance identity per RFC-0001:C-MEASUREMENT. out/ is gitignored so generated configs are not committed. Stdout output (--format label/cli/json) is unchanged when --save is absent."
+
+[[content.acceptance_criteria]]
+text = "govctl check passes and unit tests pass"
+status = "done"
+category = "chore"
+
+[[content.acceptance_criteria]]
+text = "--save writes <config_hash>.json per config plus index.jsonl to out/, creating the dir automatically (RFC-0001:C-CONFIG-SOURCE, C-MEASUREMENT)"
+status = "pending"
+category = "added"
+
+[[content.acceptance_criteria]]
+text = "out/ is gitignored"
+status = "done"
+category = "chore"
+
+[[content.acceptance_criteria]]
+text = "unit test covers write_dir directory creation and per-config file output"
+status = "done"
+category = "chore"
+
+[[content.acceptance_criteria]]
+text = "README documents --save and the default label output format"
+status = "done"
+category = "chore"

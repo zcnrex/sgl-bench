@@ -11,6 +11,7 @@ from .generate import (
     generate_ofat,
     is_valid,
     load_config,
+    write_dir,
 )
 
 __all__ = [
@@ -24,4 +25,5 @@ __all__ = [
     "generate_ofat",
     "is_valid",
     "load_config",
+    "write_dir",
 ]

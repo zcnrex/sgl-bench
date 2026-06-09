@@ -1,5 +1,7 @@
 """Generator tests ([[RFC-0001:C-CONFIG-SOURCE]], [[RFC-0001:C-SEARCH-STRATEGY]])."""
 
+import json
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -9,6 +11,7 @@ from sglbench.argsearch.generate import (
     generate_ofat,
     is_valid,
     load_config,
+    write_dir,
 )
 
 CONFIG = Path(__file__).resolve().parents[1] / "configs" / "nemotron_v3_ultra.yaml"
@@ -65,6 +68,20 @@ class GenerateTest(unittest.TestCase):
         hashes = [p.config_hash for p in pts]
         self.assertEqual(len(hashes), len(set(hashes)))
         self.assertEqual(pts[0].config_hash, config_hash(pts[0].args))
+
+    def test_write_dir_creates_dir_and_files(self):
+        pts = generate_ofat(self.branch)
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "nested" / "out"
+            self.assertFalse(target.exists())
+            write_dir(pts, target)
+            self.assertTrue(target.is_dir())
+            files = sorted(p.name for p in target.glob("*.json"))
+            self.assertEqual(files, sorted(f"{p.config_hash}.json" for p in pts))
+            index = [json.loads(line) for line in (target / "index.jsonl").read_text().splitlines()]
+            self.assertEqual(len(index), len(pts))
+            one = json.loads((target / f"{pts[0].config_hash}.json").read_text())
+            self.assertEqual(one["config_hash"], pts[0].config_hash)
 
     def test_to_cli_includes_fixed_skips_none(self):
         base = generate_ofat(self.branch)[0]

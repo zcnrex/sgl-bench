@@ -22,6 +22,8 @@ import yaml
 
 from .schema import Constraint, PrecisionBranch, SearchConfig, _key
 
+DEFAULT_OUT_DIR = "out"
+
 
 def config_hash(args: dict) -> str:
     """Content hash of a server-arg set, for result provenance ([[RFC-0001:C-MEASUREMENT]])."""
@@ -104,6 +106,19 @@ def generate_grid(branch: PrecisionBranch, grid_args) -> list[ConfigPoint]:
     return points
 
 
+def write_dir(points, out_dir) -> Path:
+    outdir = Path(out_dir)
+    outdir.mkdir(parents=True, exist_ok=True)
+    with (outdir / "index.jsonl").open("w") as idx:
+        for cp in points:
+            rec = asdict(cp)
+            (outdir / f"{cp.config_hash}.json").write_text(
+                json.dumps(rec, indent=2, default=str) + "\n"
+            )
+            idx.write(json.dumps(rec, default=str) + "\n")
+    return outdir
+
+
 def args_to_cli(args: dict) -> str:
     parts: list[str] = []
     for k in sorted(args):
@@ -127,6 +142,12 @@ def main(argv=None) -> int:
     p.add_argument("--mode", choices=["ofat", "grid"], default="ofat")
     p.add_argument("--grid-args", nargs="+", default=[], help="Candidate names for --mode grid")
     p.add_argument("--format", choices=["label", "cli", "json"], default="label")
+    p.add_argument(
+        "--save",
+        action="store_true",
+        help=f"Write one <config_hash>.json per config (and index.jsonl) to {DEFAULT_OUT_DIR}/ "
+        f"(created automatically) instead of printing to stdout",
+    )
     a = p.parse_args(argv)
 
     cfg = load_config(a.config)
@@ -138,6 +159,12 @@ def main(argv=None) -> int:
         if not a.grid_args:
             p.error("--mode grid requires --grid-args")
         points = generate_grid(branch, a.grid_args)
+
+    if a.save:
+        write_dir(points, DEFAULT_OUT_DIR)
+        print(f"wrote {len(points)} configs to {DEFAULT_OUT_DIR}/ "
+              f"(index: {DEFAULT_OUT_DIR}/index.jsonl)")
+        return 0
 
     for cp in points:
         if a.format == "cli":
