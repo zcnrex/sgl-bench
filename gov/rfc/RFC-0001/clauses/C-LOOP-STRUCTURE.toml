@@ -1,0 +1,25 @@
+#:schema ../../../schema/clause.schema.json
+
+[govctl]
+id = "C-LOOP-STRUCTURE"
+title = "Outer/inner loop separation"
+kind = "normative"
+status = "active"
+since = "0.1.0"
+
+[content]
+text = """
+The search MUST be organized as two nested loops. The outer loop MUST iterate over
+restart-required configuration (for example tensor/expert parallelism, attention
+backend, quantization, static memory fraction, CUDA-graph capture settings, and
+chunked-prefill size); each outer iteration MUST relaunch the server. The inner loop
+MUST iterate over workload axes (batch size, input/output sequence lengths, and
+concurrency) against a single live server without relaunching it.
+
+Workload axes MUST NOT be expanded into the outer loop as if they were restart-required
+configuration.
+
+**Rationale:** Restart-required configuration costs a full relaunch, weight load, and
+warmup per value, whereas workload axes are client-side and free to sweep against one
+running server. Conflating the two multiplies expensive restarts by axes that need
+none, which is the dominant cost error in a naive grid."""

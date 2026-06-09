@@ -1,0 +1,25 @@
+#:schema ../../../schema/clause.schema.json
+
+[govctl]
+id = "C-SEARCH-STRATEGY"
+title = "Sensitivity-then-focused-grid search"
+kind = "normative"
+status = "active"
+since = "0.1.0"
+
+[content]
+text = """
+The search MUST NOT enumerate a full-factorial grid over the candidate arguments.
+Instead it MUST proceed in stages: first a one-factor-at-a-time (OFAT) sensitivity
+sweep that varies a single candidate argument around a known-good baseline, then a
+focused joint grid restricted to only those arguments that BOTH showed sensitivity in
+the OFAT stage AND plausibly interact. Arguments that did not survive the OFAT stage
+MUST be pinned to their OFAT-best value during the focused grid. The set of arguments
+admitted to the focused grid, and the rationale for judging them to interact, MUST be
+recorded so the selection is inspectable.
+
+**Rationale:** Serving arguments are mostly independent, so OFAT eliminates the large
+majority of the grid while revealing which arguments matter and in which direction; a
+joint grid is reserved for the few arguments where interaction is plausible. Recording
+the admitted set turns the otherwise-subjective interaction judgment into an inspectable
+artifact."""

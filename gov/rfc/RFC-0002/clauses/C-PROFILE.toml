@@ -1,0 +1,19 @@
+#:schema ../../../schema/clause.schema.json
+
+[govctl]
+id = "C-PROFILE"
+title = "Profile before proposing an optimization"
+kind = "normative"
+status = "active"
+since = "0.1.0"
+
+[content]
+text = """
+Before an optimization is proposed for a configuration, that configuration MUST be
+profiled at its frontier operating point(s) to attribute time to kernels or execution
+phases. The profile attribution MUST be recorded alongside the proposed optimization, and
+the proposal MUST name the specific kernel or phase it targets.
+
+**Rationale:** Profiling localizes the bottleneck so that engineering effort targets a
+measured hotspot rather than a guess; recording the attribution and the named target makes
+the expected effect checkable against a post-optimization re-benchmark."""

@@ -1,0 +1,56 @@
+#:schema ../schema/adr.schema.json
+
+[govctl]
+id = "ADR-0005"
+title = "Frontier construction method: adaptive concurrency sweep per live server"
+status = "accepted"
+date = "2026-06-09"
+refs = [
+    "RFC-0001",
+    "ADR-0004",
+]
+
+[content]
+context = """
+[[ADR-0004]] fixes the objective (the throughput-per-GPU versus interactivity Pareto
+frontier under an SLO, per [[RFC-0001:C-OBJECTIVE]]); this ADR decides how to construct
+that frontier efficiently.
+
+Each server configuration is one curve; each point on it is a concurrency level. An entire
+curve is produced from a single server launch by sweeping concurrency against the live
+server (the inner loop of [[RFC-0001:C-LOOP-STRUCTURE]]), so the expensive axis is the
+number of curves — each a relaunch — not the points on a curve. The interactivity axis is
+the per-request decode rate (approximately the inverse of time-per-output-token) and the
+throughput axis is aggregate output throughput divided by the GPU count."""
+decision = """
+Construct the frontier by tracing each configuration's curve with an adaptive
+concurrency sweep against one live server: coarse points to find the knee, then
+refinement near the SLO interactivity target. Derive interactivity from the per-request
+decode rate and throughput-per-GPU from aggregate output throughput divided by the GPU
+count, and compute the cross-configuration optimal envelope offline as a post-processing
+step. Use the established scenario/concurrency benchmark tool retained under
+[[RFC-0001:C-BASELINE-ANCHOR]] for the sweep, and a separate plotting step for the
+envelope."""
+consequences = """
+Positive: an entire curve is produced per server launch; sampling concentrates where the
+SLO decision is made; the optimal envelope is free post-processing; the output maps
+directly onto the advisory-style throughput-per-GPU versus interactivity plot.
+
+Negative: adaptive sampling needs a refinement/stopping rule, which is more logic than a
+fixed grid; the SLO interactivity target must be known before sweeping so sampling can be
+focused, which is consistent with [[RFC-0001:C-OBJECTIVE]] requiring the SLO to be fixed
+up front."""
+
+[[content.alternatives]]
+text = "Single fixed-concurrency operating point per configuration."
+status = "rejected"
+rejection_reason = "Cheapest per config but yields no curve, so the SLO interactivity target cannot be honored and the frontier cannot be drawn at all."
+
+[[content.alternatives]]
+text = "Dense fixed concurrency grid per configuration."
+status = "rejected"
+rejection_reason = "Produces full curves but spends scarce inner-loop time sampling regions far from the SLO; unnecessary because the curves are smooth and monotone, so a few adaptive points trace them."
+
+[[content.alternatives]]
+text = "Adaptive coarse-to-fine concurrency sweep per live server: a few coarse points to locate the knee, then refinement near the SLO interactivity target; the cross-config Pareto envelope ('optimal only') computed offline."
+status = "accepted"

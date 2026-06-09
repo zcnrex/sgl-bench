@@ -1,0 +1,19 @@
+#:schema ../../../schema/clause.schema.json
+
+[govctl]
+id = "C-OBJECTIVE"
+title = "Pareto frontier under an SLO"
+kind = "normative"
+status = "active"
+since = "0.1.0"
+
+[content]
+text = """
+A service-level objective (SLO) — at minimum a p95 time-to-first-token bound and a
+per-token latency bound — MUST be defined before the search begins. The optimization
+objective MUST be the throughput-versus-latency Pareto frontier under that SLO.
+Configurations MUST NOT be ranked by raw throughput alone.
+
+**Rationale:** Maximizing raw tokens-per-second drives the search toward very large
+batches that violate latency budgets; the useful artifact is the frontier of
+configurations that maximize throughput while respecting the SLO."""

@@ -1,0 +1,39 @@
+#:schema ../schema/adr.schema.json
+
+[govctl]
+id = "ADR-0002"
+title = "Versioned config file as source of truth; Lark Base as results viewer only"
+status = "accepted"
+date = "2026-06-09"
+refs = ["RFC-0001"]
+
+[content]
+context = """
+The search needs a source of truth that decides which configurations are launched. The
+original proposal was to author the argument matrix in a Lark spreadsheet, generate
+permutations from it, and run them. [[RFC-0001:C-CONFIG-SOURCE]] requires a versioned,
+validated source with constraint-based pruning, because launching an invalid combination
+on a 550B-class server wastes a full relaunch and warmup cycle."""
+decision = """
+The source of truth for searched configurations is a version-controlled config file in
+the repository, consumed by a generator that prunes illegal combinations using explicit
+constraint rules before any launch. Lark is used in the "Base" form (a database with
+views and dashboards), and strictly as a downstream results viewer — never as the
+configuration generator."""
+consequences = """
+Positive: invalid combinations are caught before launch; configurations are versioned,
+diffable, and reproducible; provenance ([[RFC-0001:C-MEASUREMENT]]) flows naturally from
+a content-hashable file.
+
+Negative: requires building and maintaining a small generator and constraint ruleset
+rather than hand-editing a sheet; contributors must edit the repo file rather than a
+familiar spreadsheet UI."""
+
+[[content.alternatives]]
+text = "Lark spreadsheet as the configuration generator: author the matrix in the sheet and expand permutations directly from it."
+status = "rejected"
+rejection_reason = "A spreadsheet has no validation and no incompatibility rules, so it generates invalid combinations that are only discovered by wasting expensive server launches; it also lacks version history and provenance."
+
+[[content.alternatives]]
+text = "Versioned config file in the repository as source of truth, with a generator that applies constraint rules to emit only valid permutations; Lark Base used only as a downstream results viewer."
+status = "accepted"

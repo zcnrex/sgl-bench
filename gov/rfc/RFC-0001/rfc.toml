@@ -1,0 +1,34 @@
+#:schema ../../schema/rfc.schema.json
+
+[govctl]
+id = "RFC-0001"
+title = "Large-Model SGLang Server-Arg Search Methodology"
+version = "0.1.0"
+status = "normative"
+phase = "spec"
+owners = ["@Chunan Zeng"]
+created = "2026-06-09"
+updated = "2026-06-09"
+
+[[sections]]
+title = "Summary"
+clauses = ["clauses/C-SUMMARY.toml"]
+
+[[sections]]
+title = "Specification"
+clauses = [
+    "clauses/C-SCOPE.toml",
+    "clauses/C-LOOP-STRUCTURE.toml",
+    "clauses/C-PRECISION-BRANCH.toml",
+    "clauses/C-CONFIG-SOURCE.toml",
+    "clauses/C-SEARCH-STRATEGY.toml",
+    "clauses/C-OBJECTIVE.toml",
+    "clauses/C-QUALITY-GATE.toml",
+    "clauses/C-MEASUREMENT.toml",
+    "clauses/C-BASELINE-ANCHOR.toml",
+]
+
+[[changelog]]
+version = "0.1.0"
+date = "2026-06-09"
+notes = "Initial draft"

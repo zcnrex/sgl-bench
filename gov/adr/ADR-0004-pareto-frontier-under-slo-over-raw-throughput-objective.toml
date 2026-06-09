@@ -1,0 +1,46 @@
+#:schema ../schema/adr.schema.json
+
+[govctl]
+id = "ADR-0004"
+title = "Optimization objective: throughput-vs-latency Pareto frontier under an SLO"
+status = "accepted"
+date = "2026-06-09"
+refs = [
+    "RFC-0001",
+    "ADR-0005",
+]
+
+[content]
+context = """
+The search needs an objective function that decides which configurations "win". The
+original goal was to measure throughput per configuration and pick the fastest. But raw
+throughput is maximized by very large batches that inflate time-to-first-token and
+inter-token latency past any usable interactive budget. The reference target (an
+almanac-style advisor view) presents a throughput-versus-latency frontier, not a single
+peak throughput number."""
+decision = """
+Adopt the throughput-versus-latency Pareto frontier under a pre-defined SLO as the search
+objective, per [[RFC-0001:C-OBJECTIVE]]. The SLO (at minimum p95 TTFT and per-token
+latency bounds) is fixed before the search begins, and configurations are reported as a
+frontier rather than ranked by raw throughput."""
+consequences = """
+Positive: results are directly actionable for a serving deployment with a latency
+contract; the frontier exposes the throughput cost of tighter latency rather than hiding
+it behind one peak number.
+
+Negative: requires the latency-component metrics (TTFT, ITL/TPOT, E2E) to be measured,
+not just aggregate tokens/sec, which constrains the benchmarking tool choice
+([[RFC-0001:C-BASELINE-ANCHOR]]); also requires committing to an SLO up front, which is a
+product decision that must be made before searching.
+
+Scope note: this ADR fixes only the objective (what "best" means). How the frontier is
+traced efficiently is a separate decision recorded in [[ADR-0005]]."""
+
+[[content.alternatives]]
+text = "Maximize raw throughput (tokens/sec) as the sole objective."
+status = "rejected"
+rejection_reason = "Pushes the search toward huge batches that blow the latency budget, selecting configurations that are unusable for interactive serving; produces a single number instead of the actionable frontier."
+
+[[content.alternatives]]
+text = "Pareto frontier under a pre-defined SLO: pin a p95 TTFT and per-token latency budget first, then report the throughput-vs-latency frontier of configurations that respect it."
+status = "accepted"

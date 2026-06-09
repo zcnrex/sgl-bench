@@ -1,0 +1,21 @@
+#:schema ../../../schema/clause.schema.json
+
+[govctl]
+id = "C-MEASUREMENT"
+title = "Warmup, repeats, and provenance"
+kind = "normative"
+status = "active"
+since = "0.1.0"
+
+[content]
+text = """
+Each measured configuration MUST be warmed up before measurement and MUST be measured
+with at least two repeat runs. Each recorded result MUST capture the full reproducibility
+provenance: the configuration identity (for example a content hash of the config), the
+workload point, the measured metrics, and the execution environment (at minimum the
+SGLang commit, the kernel/library versions, and all cluster networking environment
+variables in effect).
+
+**Rationale:** Warmup dominates first-measurement timing on 550B-class models, and a
+single unrepeated measurement is noise; without recorded environment provenance, numbers
+from different runs cannot be compared or reproduced."""

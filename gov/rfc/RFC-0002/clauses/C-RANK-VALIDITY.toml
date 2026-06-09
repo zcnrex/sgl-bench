@@ -1,0 +1,19 @@
+#:schema ../../../schema/clause.schema.json
+
+[govctl]
+id = "C-RANK-VALIDITY"
+title = "Rankings are revision-scoped"
+kind = "normative"
+status = "active"
+since = "0.1.0"
+
+[content]
+text = """
+A frontier ranking is valid only for the code revision recorded in its provenance (per
+[[RFC-0001:C-MEASUREMENT]]). Any code or kernel change that affects a measured execution
+path MUST invalidate the rankings of all configurations that exercise that path, and
+those configurations MUST be re-benchmarked before the ranking is reused.
+
+**Rationale:** An optimization can reorder the frontier — a previously lower-ranked
+configuration may surpass the prior best once its bottleneck is removed — so a ranking
+cannot be carried across code changes."""

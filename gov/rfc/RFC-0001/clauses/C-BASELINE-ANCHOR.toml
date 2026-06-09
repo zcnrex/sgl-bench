@@ -1,0 +1,21 @@
+#:schema ../../../schema/clause.schema.json
+
+[govctl]
+id = "C-BASELINE-ANCHOR"
+title = "Comparability anchor"
+kind = "normative"
+status = "active"
+since = "0.1.0"
+
+[content]
+text = """
+The search MUST retain a stable baseline benchmark whose methodology does not change
+across runs, to anchor comparability with prior results. New benchmarking tooling MAY be
+introduced for richer scenario and latency-component metrics, but before it is relied
+upon its results MUST be reconciled against the stable baseline benchmark on an
+equivalent workload (for example confirming time-to-first-token agreement against an
+already-running server).
+
+**Rationale:** Historical baselines were produced with a specific built-in benchmark;
+silently switching tools makes new numbers incomparable to the prior record. Reconciling
+a new tool against the anchor before adoption prevents undetected baseline drift."""

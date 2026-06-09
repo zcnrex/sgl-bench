@@ -1,0 +1,22 @@
+#:schema ../../../schema/clause.schema.json
+
+[govctl]
+id = "C-CONFIG-SOURCE"
+title = "Versioned config as source of truth"
+kind = "normative"
+status = "active"
+since = "0.1.0"
+
+[content]
+text = """
+The single source of truth for which configurations are searched MUST be a
+version-controlled configuration file in the repository. A configuration generator MUST
+emit only valid permutations, applying the constraint rules from [[RFC-0001:C-SCOPE]] to
+prune illegal combinations before any server launch.
+
+External spreadsheet or database tools (for example Lark) MUST NOT be used as the
+configuration generator. Such tools MAY be used only as a downstream results viewer.
+
+**Rationale:** A versioned config file gives validation, incompatibility rules, and
+provenance; a spreadsheet used as a generator produces invalid combinations that are
+discovered only by wasting expensive launches."""

@@ -1,0 +1,27 @@
+#:schema ../../../schema/clause.schema.json
+
+[govctl]
+id = "C-SUMMARY"
+title = "Summary"
+kind = "informative"
+status = "active"
+since = "0.1.0"
+
+[content]
+text = """
+This RFC specifies a loop that turns the ranked configuration frontier produced under
+[[RFC-0001]] into identified, actionable performance-improvement opportunities.
+
+**Scope:** How optimization effort is directed (developer inspection of the top-ranked
+configurations), the requirement to profile a configuration before proposing a change to
+it, and the rule that a code change invalidates and requires re-benchmarking the affected
+rankings.
+
+**Out of scope:** Automated headroom, roofline, or reference-gap estimation of a
+configuration's optimization ceiling; and the implementation of any specific
+optimization.
+
+**Rationale:** The search in [[RFC-0001]] selects the best configuration under the
+current code. This RFC adds the feedback path by which the code itself is improved, while
+deliberately avoiding automated ceiling prediction, which is not reliable enough to act
+on."""

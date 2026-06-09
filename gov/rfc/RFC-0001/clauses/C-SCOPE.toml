@@ -1,0 +1,26 @@
+#:schema ../../../schema/clause.schema.json
+
+[govctl]
+id = "C-SCOPE"
+title = "Search scope and exclusions"
+kind = "normative"
+status = "active"
+since = "0.1.0"
+
+[content]
+text = """
+The methodology MUST classify every tunable server argument into exactly one of three
+buckets before a search begins: *fixed* (a known-best value that is never varied),
+*candidate* (varied during the search), or *constrained* (governed by an explicit
+illegal-combination rule). The candidate set SHOULD contain at most ten arguments.
+
+Speculative decoding (EAGLE / spec-decode and equivalent draft-model techniques) MUST
+NOT be treated as a candidate argument under this methodology; it is out of scope. A
+search that wishes to evaluate speculative decoding MUST do so under a separate effort,
+because it alters the argument taxonomy and the comparability baseline.
+
+**Rationale:** Bounding and bucketing the argument space up front is what makes the
+search tractable; an unbounded candidate set reproduces the infeasible full-factorial
+grid. Speculative decoding changes both the arg taxonomy and the meaning of a
+throughput number, so folding it into the same sweep would break comparability with the
+non-speculative baseline."""

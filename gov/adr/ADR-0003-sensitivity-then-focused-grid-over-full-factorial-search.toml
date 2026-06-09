@@ -1,0 +1,44 @@
+#:schema ../schema/adr.schema.json
+
+[govctl]
+id = "ADR-0003"
+title = "Sensitivity-then-focused-grid over full-factorial search"
+status = "accepted"
+date = "2026-06-09"
+refs = ["RFC-0001"]
+
+[content]
+context = """
+We must decide how to traverse the candidate-argument space defined in
+[[RFC-0001:C-SCOPE]]. A full-factorial grid (every candidate argument crossed with every
+other) over a 550B-class model is infeasible: with several arguments at a few values
+each, the count of restart-required configurations reaches the thousands, and every one
+costs a relaunch and warmup ([[RFC-0001:C-LOOP-STRUCTURE]]). Serving arguments are,
+however, mostly independent of one another."""
+decision = """
+Search in stages per [[RFC-0001:C-SEARCH-STRATEGY]]: first an OFAT sensitivity sweep that
+varies one candidate argument at a time around a strong baseline, then a focused joint
+grid restricted to the few arguments that both showed sensitivity and plausibly interact,
+with all other arguments pinned to their OFAT-best value."""
+consequences = """
+Positive: eliminates the large majority of the grid; yields an interpretable picture of
+which arguments matter and in which direction; spends the expensive joint-grid budget
+only where interactions are plausible.
+
+Negative: OFAT can miss interactions between arguments that were individually pruned; the
+"plausibly interact" judgment is a manual call. Mitigated by reserving the focused grid
+for exactly the interaction-prone survivors."""
+
+[[content.alternatives]]
+text = "Full-factorial grid: enumerate the Cartesian product of all candidate arguments."
+status = "rejected"
+rejection_reason = "Infeasible at 550B scale — thousands of server restarts costing weeks of accelerator time — and wasteful given serving arguments are largely independent."
+
+[[content.alternatives]]
+text = "Black-box optimizer (e.g. Bayesian / bandit search) over the joint space."
+status = "rejected"
+rejection_reason = "Adds infrastructure and obscures which arguments matter and why; the per-evaluation cost (a full relaunch) is too high to amortize a sample-hungry optimizer, and the OFAT direction signal is more interpretable for this work."
+
+[[content.alternatives]]
+text = "Sensitivity-then-focused-grid: an OFAT sweep around a known-good baseline to find which arguments matter and their direction, followed by a focused joint grid only over arguments that both showed sensitivity and plausibly interact."
+status = "accepted"

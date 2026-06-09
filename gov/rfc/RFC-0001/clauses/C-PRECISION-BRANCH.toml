@@ -1,0 +1,21 @@
+#:schema ../../../schema/clause.schema.json
+
+[govctl]
+id = "C-PRECISION-BRANCH"
+title = "Precision as a branch, not a grid axis"
+kind = "normative"
+status = "active"
+since = "0.1.0"
+
+[content]
+text = """
+Numeric precision (for example NVFP4 versus FP8) MUST be treated as a top-level branch
+of the search, not as a grid axis multiplied into every configuration. Each precision
+branch MAY have its own checkpoint, fixed-argument set, and baseline. A per-branch
+baseline is scoped within its branch and MUST NOT replace the cross-run comparability
+anchor required by [[RFC-0001:C-BASELINE-ANCHOR]].
+
+**Rationale:** Distinct precisions typically correspond to different checkpoints and
+fundamentally different deployments; treating precision as an inner grid axis multiplies
+the entire search by a factor while comparing configurations that are not
+substitutable."""

@@ -1,0 +1,32 @@
+#:schema ../../schema/rfc.schema.json
+
+[govctl]
+id = "RFC-0002"
+title = "Performance-Improvement Opportunity Loop for Server-Arg Search"
+version = "0.1.0"
+status = "normative"
+phase = "spec"
+owners = ["@Chunan Zeng"]
+created = "2026-06-09"
+updated = "2026-06-09"
+refs = [
+    "RFC-0001:C-OBJECTIVE",
+    "RFC-0001:C-MEASUREMENT",
+]
+
+[[sections]]
+title = "Summary"
+clauses = ["clauses/C-SUMMARY.toml"]
+
+[[sections]]
+title = "Specification"
+clauses = [
+    "clauses/C-OPPORTUNITY-SOURCE.toml",
+    "clauses/C-PROFILE.toml",
+    "clauses/C-RANK-VALIDITY.toml",
+]
+
+[[changelog]]
+version = "0.1.0"
+date = "2026-06-09"
+notes = "Initial draft"

@@ -1,0 +1,23 @@
+#:schema ../../../schema/clause.schema.json
+
+[govctl]
+id = "C-QUALITY-GATE"
+title = "Accuracy acceptance gate"
+kind = "normative"
+status = "active"
+since = "0.1.0"
+
+[content]
+text = """
+A configuration MUST pass an accuracy acceptance gate before it is eligible to appear in
+the results. The accuracy gate's pass/fail threshold and evaluation dataset MUST be
+defined before the search begins. The accuracy gate MUST be evaluated for each precision
+branch (see [[RFC-0001:C-PRECISION-BRANCH]]). A configuration that fails the accuracy gate
+MUST be excluded regardless of its throughput or latency. If no configuration in a
+precision branch passes the gate, the search MUST report that branch as having no
+acceptable configuration rather than emitting a degraded one.
+
+**Rationale:** A throughput- and latency-only search will otherwise select fast but
+quality-degraded configurations, which is especially likely across precision branches
+such as NVFP4 versus FP8. Fixing the threshold up front (as with the SLO in
+[[RFC-0001:C-OBJECTIVE]]) prevents the bar from being moved to fit the results."""

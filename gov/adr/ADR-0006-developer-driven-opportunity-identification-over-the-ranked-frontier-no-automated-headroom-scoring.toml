@@ -1,0 +1,45 @@
+#:schema ../schema/adr.schema.json
+
+[govctl]
+id = "ADR-0006"
+title = "Developer-driven opportunity identification over the ranked frontier; no automated headroom scoring"
+status = "accepted"
+date = "2026-06-09"
+refs = [
+    "RFC-0002",
+    "RFC-0001",
+]
+
+[content]
+context = """
+[[RFC-0002]] must decide how optimization effort is prioritized. One option is to estimate
+each configuration's optimization ceiling — via hardware roofline, a published reference
+curve, or profiler-derived headroom — and use that estimate to re-prioritize, potentially
+resurrecting configurations that the [[RFC-0001]] search ranked low. The risk this would
+guard against is real: a lower-ranked configuration can surpass the current best once a
+bottleneck kernel is optimized. The question is whether automated headroom estimation is a
+trustworthy enough basis to act on that risk."""
+decision = """
+Direct optimization effort by developer inspection of the top-ranked configurations on the
+measured frontier, using profiling ([[RFC-0002:C-PROFILE]]) to localize bottlenecks. Do
+not compute or act on automated headroom or ceiling scores. The leapfrog risk is handled
+not by prediction but by re-benchmarking affected configurations after any code change
+([[RFC-0002:C-RANK-VALIDITY]])."""
+consequences = """
+Positive: no false precision from unreliable ceiling models; effort follows the
+trustworthy measured frontier; minimal machinery to build and maintain.
+
+Negative: a genuinely high-ceiling but currently low-ranked configuration can be
+overlooked, because nothing automatically flags it — an accepted trade-off given that
+headroom estimates are unreliable. This is partially mitigated because any optimization
+triggers a re-benchmark ([[RFC-0002:C-RANK-VALIDITY]]) that can surface a reordering once
+a bottleneck is actually removed."""
+
+[[content.alternatives]]
+text = "Automated headroom / roofline / reference-gap scoring that predicts each configuration's ceiling and re-prioritizes lower-ranked configurations accordingly."
+status = "rejected"
+rejection_reason = "Such ceiling estimates are not accurate enough in practice; acting on them risks spending scarce relaunch and engineering budget chasing phantom headroom, and adds modeling machinery whose output developers would second-guess anyway."
+
+[[content.alternatives]]
+text = "Rank by measured performance (per [[RFC-0001]]) and direct optimization effort by developer inspection of the top-ranked configurations, profiling them to localize bottlenecks; no automated headroom score gates keep/prune decisions."
+status = "accepted"

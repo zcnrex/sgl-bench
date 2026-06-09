@@ -1,0 +1,30 @@
+#:schema ../../../schema/clause.schema.json
+
+[govctl]
+id = "C-SUMMARY"
+title = "Summary"
+kind = "informative"
+status = "active"
+since = "0.1.0"
+
+[content]
+text = """
+This RFC specifies a methodology for searching the server-argument space of large
+SGLang inference deployments to find configurations that best trade off throughput
+against latency under a defined service-level objective (SLO).
+
+**Scope:** The search procedure, its loop structure, the source of truth for
+configurations, the optimization objective, acceptance criteria, and provenance
+requirements. The methodology is model-agnostic; Nemotron-3-Ultra-550B (NVFP4/FP8)
+is its first application. Speculative decoding (EAGLE / spec-decode) is explicitly
+out of scope for this methodology (see [[RFC-0001:C-SCOPE]]).
+
+**Out of scope:** The specific known-best argument values for any given model, the
+results-presentation tooling beyond the requirement that a config's provenance be
+recorded, and the choice of orchestration implementation.
+
+**Rationale:** A naive full-factorial grid over server arguments × workload axes ×
+precision is infeasible for 550B-class models, where every restart-required
+configuration costs a full server relaunch, weight load, and warmup before a single
+measurement. This RFC defines obligations that keep the search tractable, the results
+comparable across runs, and the chosen configurations trustworthy."""

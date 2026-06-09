@@ -1,0 +1,42 @@
+#:schema ../schema/adr.schema.json
+
+[govctl]
+id = "ADR-0001"
+title = "Plain driver script over multi-agent orchestration for the arg search"
+status = "accepted"
+date = "2026-06-09"
+refs = ["RFC-0001"]
+
+[content]
+context = """
+The server-arg search defined by [[RFC-0001]] is GPU-bound and serialized on the
+hardware: each restart-required configuration in the outer loop
+([[RFC-0001:C-LOOP-STRUCTURE]]) requires a full server relaunch, weight load, and warmup
+on the same physical accelerators. Only one server configuration can occupy the GPUs at a
+time. We need to choose how to orchestrate the launch → warmup → benchmark → log →
+teardown cycle across the config list."""
+decision = """
+Use a plain, sequential driver script as the orchestration layer for the search. The
+driver loops over the versioned config file ([[RFC-0001:C-CONFIG-SOURCE]]) performing
+launch → warmup → benchmark (with repeats) → log → teardown for each configuration.
+
+This decision constrains only the orchestration shape (one sequential loop), not the
+launch/wait-healthy/teardown primitive itself; swapping in a dedicated server-lifecycle
+layer for a particular deployment target (for example a multi-node cluster) is compatible
+with this decision and is left to implementation."""
+consequences = """
+Positive: minimal complexity, easy to reason about, and a natural fit for hardware that
+serializes server launches; failures are localized to one configuration at a time.
+
+Negative: no concurrency, so total wall-clock time is the sum of all per-config cycles —
+acceptable because the GPUs are the bottleneck, not the driver. If future work targets
+multiple independent hardware pools, the single-loop assumption would need revisiting."""
+
+[[content.alternatives]]
+text = "Multi-agent / parallel orchestration fan-out: spawn multiple agents or workers to drive configurations concurrently."
+status = "rejected"
+rejection_reason = "Server launches cannot be parallelized — they are serialized on the same GPUs — so fan-out buys no wall-clock speedup while adding coordination complexity and failure modes."
+
+[[content.alternatives]]
+text = "Plain driver script: a single sequential program that loops over the versioned config file, launching, warming up, benchmarking, logging, and tearing down each configuration in turn."
+status = "accepted"
