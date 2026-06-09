@@ -3,13 +3,13 @@
 [govctl]
 id = "RFC-0001"
 title = "Large-Model SGLang Server-Arg Search Methodology"
-version = "0.2.0"
+version = "0.3.0"
 status = "normative"
 phase = "impl"
 owners = ["@Chunan Zeng"]
 created = "2026-06-09"
 updated = "2026-06-09"
-signature = "189a1874acfcd9b5a06b31a32ae0090931d5fe2b9a979dfdd7325cecd8a4f935"
+signature = "e566393694f89e1b2d648f46ef7e4e0170fdc0c2d95eee881881b5edd49c82ad"
 
 [[sections]]
 title = "Summary"
@@ -29,6 +29,11 @@ clauses = [
     "clauses/C-BASELINE-ANCHOR.toml",
     "clauses/C-WORKLOAD-STAGING.toml",
 ]
+
+[[changelog]]
+version = "0.3.0"
+date = "2026-06-09"
+notes = "Tighten C-QUALITY-GATE: accuracy gate filters eligibility at every search stage (OFAT pinning, focused-grid admission, final results); failing configs recorded and flagged in the measurement stream for trade-off inspection, never promoted into the acceptable results"
 
 [[changelog]]
 version = "0.2.0"
