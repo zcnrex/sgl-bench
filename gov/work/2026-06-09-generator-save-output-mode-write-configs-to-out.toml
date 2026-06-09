@@ -3,9 +3,10 @@
 [govctl]
 id = "WI-2026-06-09-003"
 title = "Generator --save output mode (write configs to out/)"
-status = "active"
+status = "done"
 created = "2026-06-09"
 started = "2026-06-09"
+completed = "2026-06-09"
 refs = [
     "RFC-0001:C-CONFIG-SOURCE",
     "RFC-0001:C-MEASUREMENT",
@@ -21,7 +22,7 @@ category = "chore"
 
 [[content.acceptance_criteria]]
 text = "--save writes <config_hash>.json per config plus index.jsonl to out/, creating the dir automatically (RFC-0001:C-CONFIG-SOURCE, C-MEASUREMENT)"
-status = "pending"
+status = "done"
 category = "added"
 
 [[content.acceptance_criteria]]
