@@ -19,7 +19,9 @@ cfg = load_config("configs/nemotron_v3_ultra.yaml")
 branch = cfg.branch("nvfp4")
 
 points = generate_ofat(branch)                       # outer: restart-required configs
-workload = workload_points(cfg.workload_axes)        # inner: isl/osl × concurrency
+workload = workload_points(cfg.workload_axes, role="iter")  # inner: short-output search points
+# role="report" (long-output) is run only on the chosen config(s) for the final report
+# (RFC-0001:C-WORKLOAD-STAGING).
 
 results = run_search(points, workload, manager, repeats=2)
 write_results(results, "out")                         # -> out/results.jsonl
@@ -52,40 +54,35 @@ class ServerSession:
 The session exposes a `BenchClient` (warmup + measure — see [measure.md](measure.md)) and a
 `shutdown()`.
 
-> **Status:** the protocols + orchestration ship today and are unit-tested with fakes. A
-> concrete `ServerManager`/`BenchClient` that launches SGLang and runs genai-bench /
-> `bench_one_batch_server` is the next implementation slice. Until then, supply your own
-> adapter implementing the contract above.
+> **Status:** a concrete adapter now ships in `sglang_adapter.py` — `SGLangServerManager`
+> launches `python -m sglang.launch_server`, polls `/health` until ready, and tears the
+> server down on `shutdown()`; `BenchOneBatchClient` drives `sglang.bench_one_batch_server`
+> (the C-BASELINE-ANCHOR transport) and maps its result record to the canonical metric
+> vocabulary in `metrics.py`. Command construction and result parsing are unit-tested
+> without a GPU. **Before these numbers are relied upon, reconcile them against the stable
+> baseline on a live server (RFC-0001:C-BASELINE-ANCHOR);** genai-bench (richer percentile
+> metrics, e.g. true p95 TTFT) is a future transport behind the same `BenchClient`.
 
-## Adapter sketch
+## Concrete adapter
 
 ```python
-import subprocess, time
-from sglbench.argsearch import args_to_cli  # from generate
+from sglbench.argsearch import (
+    load_config, generate_ofat, workload_points, run_search, write_results,
+    SGLangServerManager,
+)
 
-class SglangServerManager:
-    def __init__(self, model, port=8000):
-        self.model, self.port = model, port
+cfg = load_config("configs/nemotron_v3_ultra.yaml")
+branch = cfg.branch("nvfp4")
 
-    def launch(self, args):
-        proc = subprocess.Popen(
-            ["python", "-m", "sglang.launch_server",
-             "--model-path", self.model, "--port", str(self.port),
-             *args_to_cli(args).split()]
-        )
-        _wait_until_ready(self.port)         # poll /health
-        return SglangSession(proc, self.port)
-
-class SglangSession:
-    def __init__(self, proc, port):
-        self.proc = proc
-        self._client = MyBenchClient(port)   # implements warmup/measure
-    @property
-    def client(self):
-        return self._client
-    def shutdown(self):
-        self.proc.terminate(); self.proc.wait()
+manager = SGLangServerManager(branch.checkpoint, host="127.0.0.1", port=30000)
+results = run_search(generate_ofat(branch), workload_points(cfg.workload_axes), manager)
+write_results(results, "out")                         # -> out/results.jsonl
 ```
+
+`SGLangServerManager` injects its subprocess launcher, `/health` probe, and bench runner,
+so the orchestration is exercised with fakes in tests. The bench transport maps a
+`WorkloadPoint` to one `bench_one_batch_server` batch run (`concurrency` → `--batch-size`,
+`isl`/`osl` → `--input-len`/`--output-len`) and reads back the `--result-filename` JSONL.
 
 ## Shell alternative
 

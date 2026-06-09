@@ -8,12 +8,12 @@ status = "active"
 since = "0.1.0"
 
 [content]
-text = """
-The opportunity loop MUST take the ranked throughput-versus-interactivity frontier
-defined by [[RFC-0001:C-OBJECTIVE]] as its input. Optimization effort MUST be directed by
-inspecting the top-ranked configurations on that frontier. The loop MUST NOT rely on
-automated headroom, roofline, or reference-gap scoring to predict a configuration's
-optimization ceiling or to re-prioritize lower-ranked configurations.
+text = '''
+The opportunity loop MUST take the ranked decode-throughput-versus-decode-latency Pareto
+frontier defined by [[RFC-0001:C-OBJECTIVE]] as its input. Optimization effort MUST be
+directed by inspecting the top-ranked configurations on that frontier. The loop MUST NOT
+rely on automated headroom, roofline, or reference-gap scoring to predict a
+configuration's optimization ceiling or to re-prioritize lower-ranked configurations.
 
 **Rationale:** The measured frontier is the trustworthy prioritization signal; a developer
-reviewing the top ranks is the effective way to spot real opportunities."""
+reviewing the top ranks is the effective way to spot real opportunities."""'''

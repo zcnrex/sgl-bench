@@ -8,12 +8,30 @@ status = "active"
 since = "0.1.0"
 
 [content]
-text = """
-A service-level objective (SLO) — at minimum a p95 time-to-first-token bound and a
-per-token latency bound — MUST be defined before the search begins. The optimization
-objective MUST be the throughput-versus-latency Pareto frontier under that SLO.
-Configurations MUST NOT be ranked by raw throughput alone.
+text = '''
+A service-level objective (SLO) MUST be defined before the search begins. The SLO's
+gating bound MUST be a decode latency bound: a per-token (inter-token) latency limit,
+equivalently a minimum steady-state decode throughput. A time-to-first-token (TTFT)
+target MAY also be defined, but TTFT MUST be treated as a reported, non-gating metric — a
+configuration MUST NOT be excluded from the results on the basis of TTFT alone.
 
-**Rationale:** Maximizing raw tokens-per-second drives the search toward very large
-batches that violate latency budgets; the useful artifact is the frontier of
-configurations that maximize throughput while respecting the SLO."""
+Decode performance is the first-class objective. The throughput axis MUST be the
+steady-state decode throughput at the operating context length: the decode rate measured
+over a window of consecutive decode steps at the run's longest sequence position,
+excluding the first decode step after prefill. It MUST NOT be a throughput averaged over
+an output sequence that mixes in inexpensive early-context tokens. The window size MUST be
+fixed before the search and recorded; every decode-throughput measurement MUST be tagged
+with the context length at which it was taken, so that measurements are compared only at
+equivalent sequence positions.
+
+The optimization objective MUST be the decode-throughput-versus-decode-latency Pareto
+frontier under the decode SLO. Configurations MUST NOT be ranked by raw throughput alone.
+
+**Rationale:** For large-context serving, decode is memory-bandwidth-bound on the KV cache
+and its cost is governed by the current sequence length, not by how that length was
+reached; per-token decode latency is what a user experiences continuously, whereas TTFT is
+paid once. A decode throughput averaged over a short output is dominated by warm-up
+transients, and over a long output is diluted by cheap early-context tokens, so the
+steady-state rate over a window at a stated context length is the only comparable signal.
+Gating on TTFT would discard configurations that sustain excellent decode merely because
+prefilling a long prompt is slow."""'''

@@ -91,6 +91,10 @@ class BenchClient(Protocol):
         """Run one recorded pass and return its metrics."""
 
 
+def _bench_tool(client: BenchClient) -> str | None:
+    return getattr(client, "tool", None)
+
+
 @dataclass
 class MeasurementResult:
     config_hash: str
@@ -100,6 +104,7 @@ class MeasurementResult:
     metrics: dict  # per-metric {mean, median, n} aggregates across repeats
     repeats: list[dict]  # raw per-repeat metrics
     environment: dict
+    bench_tool: str | None = None
 
     def to_record(self) -> dict:
         return asdict(self)
@@ -198,4 +203,5 @@ def measure_point(
         metrics=_aggregate(runs),
         repeats=runs,
         environment=env,
+        bench_tool=_bench_tool(client),
     )

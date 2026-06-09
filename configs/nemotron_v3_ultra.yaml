@@ -11,12 +11,34 @@ model: nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-NVFP4
 
 workload_axes:
   context_length: 131072
+  # Workload cost-role staging ([[RFC-0001:C-WORKLOAD-STAGING]]).
+  # iter: short-output, long-context — drives the arg search; the tail decode window gives
+  # steady-state decode throughput at that context length.
   isl_osl_pairs:
     - [8192, 1024]
     - [60000, 20]
+    - [64000, 1024]
+  # report: long-output — NOT run across the candidate set; only for final-report
+  # characterization of the chosen config(s).
+  report_isl_osl_pairs:
     - [8192, 65536]
   concurrency: [1, 8, 32, 128, 256, 512]
+  # Steady-state decode-throughput window ([[RFC-0001:C-OBJECTIVE]]). bench_one_batch_server
+  # exposes the single tail step (last_gen_throughput); a true multi-step window needs a
+  # percentile/profiling transport (genai-bench).
+  decode_window_steps: 1
   note: "Swept against a live server (genai-bench / bench_one_batch_server); not part of restart-required permutations."
+
+# SLO for the decode-first Pareto frontier ([[RFC-0001:C-OBJECTIVE]]). Defined before the
+# search. The GATE is decode per-token latency (ITL); TTFT is a report-only target and never
+# excludes a config. PHASE-0 SEED VALUES — tune to the real service target. Decode ITL grows
+# with context length, so the long-context iter pairs get a relaxed per-token override.
+slo:
+  per_token_ms: 40
+  ttft_p95_ms: 5000
+  overrides:
+    - {isl: 60000, osl: 20, per_token_ms: 80}
+    - {isl: 64000, osl: 1024, per_token_ms: 80}
 
 precision_branches:
   - name: nvfp4

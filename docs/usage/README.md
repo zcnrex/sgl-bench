@@ -8,8 +8,9 @@ them through an outer/inner loop → measure each workload point with full prove
 | --- | --- | --- |
 | 1. Define & validate the search | [config.md](config.md) | `schema.py`, `validate.py` |
 | 2. Generate restart-required configs | [generate.md](generate.md) | `generate.py` |
-| 3. Drive outer/inner search loop | [driver.md](driver.md) | `driver.py` |
+| 3. Drive outer/inner search loop | [driver.md](driver.md) | `driver.py`, `sglang_adapter.py` |
 | 4. Measure a workload point | [measure.md](measure.md) | `measure.py` |
+| 5. Pareto frontier under the SLO | [objective.md](objective.md) | `objective.py`, `metrics.py` |
 
 The normative methodology lives in [`docs/rfc/RFC-0001.md`](../rfc/RFC-0001.md) (search
 methodology) and [`docs/rfc/RFC-0002.md`](../rfc/RFC-0002.md) (opportunity loop); the

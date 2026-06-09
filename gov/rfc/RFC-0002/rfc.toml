@@ -3,7 +3,7 @@
 [govctl]
 id = "RFC-0002"
 title = "Performance-Improvement Opportunity Loop for Server-Arg Search"
-version = "0.1.0"
+version = "0.1.1"
 status = "normative"
 phase = "spec"
 owners = ["@Chunan Zeng"]
@@ -13,6 +13,7 @@ refs = [
     "RFC-0001:C-OBJECTIVE",
     "RFC-0001:C-MEASUREMENT",
 ]
+signature = "73e279349f30f04b2b763bab9221928653e6ce48816b46909468103f1518e51a"
 
 [[sections]]
 title = "Summary"
@@ -25,6 +26,12 @@ clauses = [
     "clauses/C-PROFILE.toml",
     "clauses/C-RANK-VALIDITY.toml",
 ]
+
+[[changelog]]
+version = "0.1.1"
+date = "2026-06-09"
+notes = "Track RFC-0001 v0.2.0 decode-first frontier"
+changed = ["C-OPPORTUNITY-SOURCE — frontier input is now the decode-throughput-versus-decode-latency Pareto frontier (RFC-0001:C-OBJECTIVE v0.2.0)"]
 
 [[changelog]]
 version = "0.1.0"

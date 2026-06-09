@@ -167,9 +167,45 @@ class PrecisionBranch(BaseModel):
         return self
 
 
+class SLOOverride(BaseModel):
+    """Per-(isl, osl) SLO override; an unset bound inherits the global value."""
+
+    isl: int
+    osl: int
+    ttft_p95_ms: float | None = Field(default=None, gt=0)
+    per_token_ms: float | None = Field(default=None, gt=0)
+
+
+class SLO(BaseModel):
+    """SLO for [[RFC-0001:C-OBJECTIVE]]: per-token (ITL) is the gate; TTFT is report-only."""
+
+    per_token_ms: float = Field(gt=0)
+    ttft_p95_ms: float | None = Field(default=None, gt=0)
+    overrides: list[SLOOverride] = Field(default_factory=list)
+
+    def _override(self, isl: int, osl: int) -> SLOOverride | None:
+        for o in self.overrides:
+            if o.isl == isl and o.osl == osl:
+                return o
+        return None
+
+    def gate_per_token_ms(self, isl: int, osl: int) -> float:
+        o = self._override(isl, osl)
+        if o is not None and o.per_token_ms is not None:
+            return o.per_token_ms
+        return self.per_token_ms
+
+    def ttft_target_ms(self, isl: int, osl: int) -> float | None:
+        o = self._override(isl, osl)
+        if o is not None and o.ttft_p95_ms is not None:
+            return o.ttft_p95_ms
+        return self.ttft_p95_ms
+
+
 class SearchConfig(BaseModel):
     model: str
     workload_axes: dict[str, Any] = Field(default_factory=dict)
+    slo: SLO | None = None
     precision_branches: list[PrecisionBranch] = Field(min_length=1)
 
     @model_validator(mode="after")

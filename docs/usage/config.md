@@ -22,8 +22,14 @@ Precision (e.g. `quantization`) is a top-level **branch**, never a candidate axi
 ```yaml
 model: nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-NVFP4
 workload_axes:
-  isl_osl_pairs: [[8192, 1024], [60000, 20], [8192, 65536]]
+  isl_osl_pairs: [[8192, 1024], [60000, 20], [64000, 1024]]   # iter: drives the search
+  report_isl_osl_pairs: [[8192, 65536]]                        # report: final chars only
   concurrency: [1, 8, 32, 128, 256, 512]
+slo:                          # decode-first objective; gate = per-token ITL (RFC-0001:C-OBJECTIVE)
+  per_token_ms: 40            # the GATE (decode ITL)
+  ttft_p95_ms: 5000           # report-only target; never excludes a config
+  overrides:                  # per-(isl,osl): decode ITL grows with context length
+    - {isl: 60000, osl: 20, per_token_ms: 80}
 precision_branches:
   - name: nvfp4
     checkpoint: nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-NVFP4
@@ -36,6 +42,20 @@ precision_branches:
     baseline:
       attention-backend: trtllm_mha
 ```
+
+## Workload cost-role staging & SLO
+
+`workload_axes` carries two pair sets (RFC-0001:C-WORKLOAD-STAGING). **`isl_osl_pairs`**
+are the *iter* role — short-output, long-context workloads that drive the arg search; their
+tail decode window gives steady-state decode throughput at that context length cheaply.
+**`report_isl_osl_pairs`** are the *report* role — long-output workloads that are NOT run
+across the candidate set and are reserved for characterizing the chosen config(s) at the
+end. `workload_points(axes, role="iter"|"report")` selects the set.
+
+The `slo` block defines the **decode-first** objective (RFC-0001:C-OBJECTIVE): the gate is
+`per_token_ms` (decode inter-token latency); `ttft_p95_ms` is a report-only target that
+never excludes a config. Because decode ITL grows with context length, long-context iter
+pairs typically need a relaxed `per_token_ms` override. See [objective.md](objective.md).
 
 ## Validate
 

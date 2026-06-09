@@ -46,12 +46,18 @@ class ServerManager(Protocol):
     def launch(self, args: dict) -> ServerSession: ...
 
 
-def workload_points(axes: dict) -> list[WorkloadPoint]:
+ITER_PAIRS_KEY = "isl_osl_pairs"
+REPORT_PAIRS_KEY = "report_isl_osl_pairs"
+
+
+def workload_points(axes: dict, role: str = "iter") -> list[WorkloadPoint]:
     """Expand the inner-loop workload axes into concrete points.
 
-    Cross-product of isl/osl pairs with concurrency ([[RFC-0001:C-LOOP-STRUCTURE]]).
+    Cross-product of isl/osl pairs with concurrency ([[RFC-0001:C-LOOP-STRUCTURE]]). `role`
+    ("iter" | "report") picks the cost-role pair set per [[RFC-0001:C-WORKLOAD-STAGING]].
     """
-    pairs = axes.get("isl_osl_pairs", [])
+    key = REPORT_PAIRS_KEY if role == "report" else ITER_PAIRS_KEY
+    pairs = axes.get(key, [])
     concurrencies = axes.get("concurrency", [])
     return [
         WorkloadPoint(isl=int(isl), osl=int(osl), concurrency=int(c))

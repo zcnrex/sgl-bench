@@ -1,0 +1,42 @@
+#:schema ../schema/work.schema.json
+
+[govctl]
+id = "WI-2026-06-09-007"
+title = "Pareto frontier + SLO filter over results.jsonl (C-OBJECTIVE)"
+status = "done"
+created = "2026-06-09"
+started = "2026-06-09"
+completed = "2026-06-09"
+refs = [
+    "RFC-0001",
+    "ADR-0002",
+    "ADR-0004",
+]
+
+[content]
+description = "Implement RFC-0001:C-OBJECTIVE: read out/results.jsonl, apply the SLO (p95 TTFT bound + per-token bound, global with optional per-(isl,osl) overrides, sourced from the versioned config per ADR-0002), filter out SLO-violating points, and compute the throughput-vs-latency Pareto frontier (ADR-0004) over the SLO-passing points; output the ranked frontier. Configs MUST NOT be ranked by raw throughput alone."
+
+[[content.acceptance_criteria]]
+text = "SLO schema (ttft_p95_ms + per_token_ms, global + per-pair overrides) added to the versioned config and seeded for the nvfp4 branch"
+status = "done"
+category = "added"
+
+[[content.acceptance_criteria]]
+text = "SLO filter excludes points whose p95 TTFT or per-token latency violate the bound for their workload pair"
+status = "done"
+category = "added"
+
+[[content.acceptance_criteria]]
+text = "Pareto frontier computed over SLO-passing points (maximize throughput, minimize latency); dominated points excluded; ranked output emitted"
+status = "done"
+category = "added"
+
+[[content.acceptance_criteria]]
+text = "ranking never uses raw throughput alone (C-OBJECTIVE); frontier construction is unit-tested incl. SLO-filter and domination edge cases"
+status = "done"
+category = "added"
+
+[[content.acceptance_criteria]]
+text = "govctl check passes and tests are green"
+status = "done"
+category = "chore"

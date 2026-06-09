@@ -3,12 +3,13 @@
 [govctl]
 id = "RFC-0001"
 title = "Large-Model SGLang Server-Arg Search Methodology"
-version = "0.1.0"
+version = "0.2.0"
 status = "normative"
 phase = "impl"
 owners = ["@Chunan Zeng"]
 created = "2026-06-09"
 updated = "2026-06-09"
+signature = "189a1874acfcd9b5a06b31a32ae0090931d5fe2b9a979dfdd7325cecd8a4f935"
 
 [[sections]]
 title = "Summary"
@@ -26,6 +27,17 @@ clauses = [
     "clauses/C-QUALITY-GATE.toml",
     "clauses/C-MEASUREMENT.toml",
     "clauses/C-BASELINE-ANCHOR.toml",
+    "clauses/C-WORKLOAD-STAGING.toml",
+]
+
+[[changelog]]
+version = "0.2.0"
+date = "2026-06-09"
+notes = "Decode-first objective; TTFT becomes non-gating; workload cost-role staging"
+added = ["C-WORKLOAD-STAGING — short-output workloads drive the search; long-output workloads reserved for final-report characterization"]
+changed = [
+    "C-OBJECTIVE — decode latency/throughput is the first-class objective and the sole SLO gate; TTFT is now a reported, non-gating metric",
+    "C-OBJECTIVE — throughput axis is steady-state decode throughput tagged with context length, not OSL-averaged",
 ]
 
 [[changelog]]

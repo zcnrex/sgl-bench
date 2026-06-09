@@ -1,0 +1,38 @@
+#:schema ../schema/work.schema.json
+
+[govctl]
+id = "WI-2026-06-09-006"
+title = "Concrete SGLang adapter: ServerManager + BenchClient (subprocess launch + bench transport)"
+status = "done"
+created = "2026-06-09"
+started = "2026-06-09"
+completed = "2026-06-09"
+refs = ["RFC-0001"]
+
+[content]
+description = "Concrete implementation of the driver's ServerManager/ServerSession/BenchClient protocols: launch python -m sglang.launch_server with a ConfigPoint's args, poll /health until ready (or timeout), tear down on shutdown; and a BenchClient wrapping the stable bench_one_batch_server transport (C-BASELINE-ANCHOR) for warmup+measure, emitting a canonical metric vocabulary. Command-build and output-parse are pure/unit-tested (GPU-free); e2e reconciliation on devbox is a flagged follow-up per C-BASELINE-ANCHOR."
+
+[[content.acceptance_criteria]]
+text = "SGLangServerManager.launch builds the correct launch_server command from a ConfigPoint args dict and waits for /health readiness with a timeout"
+status = "done"
+category = "added"
+
+[[content.acceptance_criteria]]
+text = "ServerSession.shutdown tears down the launched process; BenchClient implements warmup+measure against the live server via bench_one_batch_server"
+status = "done"
+category = "added"
+
+[[content.acceptance_criteria]]
+text = "BenchClient emits a canonical metric vocabulary (ttft_p95_ms, per_token_ms, output throughput) consumed by the objective module"
+status = "done"
+category = "added"
+
+[[content.acceptance_criteria]]
+text = "command-build + output-parse covered by GPU-free unit tests; concrete classes satisfy the runtime_checkable protocols"
+status = "done"
+category = "added"
+
+[[content.acceptance_criteria]]
+text = "govctl check passes and tests are green"
+status = "done"
+category = "chore"

@@ -1,7 +1,9 @@
 from .schema import (
+    SLO,
     CandidateArg,
     Constraint,
     PrecisionBranch,
+    SLOOverride,
     SearchConfig,
 )
 from .generate import (
@@ -28,8 +30,27 @@ from .driver import (
     workload_points,
     write_results,
 )
+from .sglang_adapter import (
+    BenchOneBatchClient,
+    SGLangServerManager,
+    SGLangSession,
+    build_bench_cmd,
+    build_launch_cmd,
+    parse_result_jsonl,
+    record_to_metrics,
+)
+from .objective import (
+    FrontierEntry,
+    build_frontier,
+    load_results,
+    pareto_frontier,
+    passes_slo,
+    write_frontier,
+)
 
 __all__ = [
+    "SLO",
+    "SLOOverride",
     "CandidateArg",
     "Constraint",
     "PrecisionBranch",
@@ -52,4 +73,17 @@ __all__ = [
     "run_search",
     "workload_points",
     "write_results",
+    "BenchOneBatchClient",
+    "SGLangServerManager",
+    "SGLangSession",
+    "build_bench_cmd",
+    "build_launch_cmd",
+    "parse_result_jsonl",
+    "record_to_metrics",
+    "FrontierEntry",
+    "build_frontier",
+    "load_results",
+    "pareto_frontier",
+    "passes_slo",
+    "write_frontier",
 ]

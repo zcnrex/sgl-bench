@@ -1,0 +1,44 @@
+#:schema ../schema/work.schema.json
+
+[govctl]
+id = "WI-2026-06-09-008"
+title = "Decode-first objective: tail decode throughput primary, TTFT report-only, workload staging (RFC-0001:C-OBJECTIVE amendment)"
+status = "done"
+created = "2026-06-09"
+started = "2026-06-09"
+completed = "2026-06-09"
+refs = [
+    "RFC-0001",
+    "RFC-0001:C-OBJECTIVE",
+    "RFC-0001:C-WORKLOAD-STAGING",
+    "RFC-0002:C-OPPORTUNITY-SOURCE",
+]
+
+[content]
+description = "Refine the optimization objective per the amended RFC-0001:C-OBJECTIVE + new C-WORKLOAD-STAGING: decode latency/throughput is the first-class objective and the only SLO gate (per-token/ITL); TTFT becomes a reported, non-gating metric. Throughput = steady-state/tail decode throughput (bench last_gen_throughput) tagged with context length, not OSL-averaged output_throughput. Short-OSL workloads drive the search (fast iter); long-OSL reserved for final-report characterization."
+notes = ["Two residual deviations for the future C-SEARCH-STRATEGY stage orchestrator: (1) run_search is role-agnostic — it does not pin the search to workload_points(role='iter'), so the C-WORKLOAD-STAGING ban on long-output workloads during OFAT/grid must be enforced by the orchestrator/caller; (2) bench_one_batch_server exposes only the single tail decode step (decode_window_steps=1), not the multi-step steady-state window C-OBJECTIVE specifies — a true window (and true p95 TTFT) needs the genai-bench transport, reconciled per C-BASELINE-ANCHOR."]
+
+[[content.acceptance_criteria]]
+text = "RFC-0001:C-OBJECTIVE amended (decode-primary, ITL-only gate, TTFT report-only, decode-throughput-at-context) and C-WORKLOAD-STAGING added; govctl check + rfc-reviewer clean"
+status = "done"
+category = "added"
+
+[[content.acceptance_criteria]]
+text = "SLO gates on decode per-token (ITL) only; TTFT captured and reported but never excludes a config"
+status = "done"
+category = "added"
+
+[[content.acceptance_criteria]]
+text = "first-class decode throughput = tail/steady-state (last_gen_throughput) tagged with context length; ITL derived from it (not output_throughput)"
+status = "done"
+category = "added"
+
+[[content.acceptance_criteria]]
+text = "workload role staging (iter short-OSL vs report long-OSL) in config + workload_points; [64000,1024] added as an iter workload"
+status = "done"
+category = "added"
+
+[[content.acceptance_criteria]]
+text = "govctl check passes, tests green, compliance-checker clean"
+status = "done"
+category = "chore"
