@@ -84,26 +84,64 @@ def generate_ofat(branch: PrecisionBranch) -> list[ConfigPoint]:
     return points
 
 
-def generate_grid(branch: PrecisionBranch, grid_args) -> list[ConfigPoint]:
-    names = list(grid_args)
+def grid_args_for(branch: PrecisionBranch, grid_args=None) -> list:
+    """Resolve the admitted grid-arg set: explicit `grid_args`, else the branch's
+    declared focused_grid ([[RFC-0001:C-SEARCH-STRATEGY]])."""
+    if grid_args is not None:
+        return list(grid_args)
+    if branch.focused_grid is None:
+        raise ValueError(
+            f"branch '{branch.name}' declares no focused_grid; pass grid_args or add a "
+            f"focused_grid block (C-SEARCH-STRATEGY)"
+        )
+    return list(branch.focused_grid.args)
+
+
+def generate_grid(branch: PrecisionBranch, grid_args=None) -> list[ConfigPoint]:
+    names = grid_args_for(branch, grid_args)
     for n in names:
         if n not in branch.candidate_names:
             raise KeyError(f"grid arg '{n}' is not a candidate in branch '{branch.name}'")
+    pins = {} if branch.focused_grid is None else dict(branch.focused_grid.pins)
+    pins = {k: v for k, v in pins.items() if k not in set(names)}
     value_lists = [next(c.values for c in branch.candidate if c.name == n) for n in names]
     points: list[ConfigPoint] = []
     seen: set[str] = set()
     for combo in itertools.product(*value_lists):
-        overrides = dict(zip(names, combo))
-        cfg = _assemble(branch, overrides)
+        swept = dict(zip(names, combo))
+        cfg = _assemble(branch, {**pins, **swept})
         if not is_valid(cfg, branch.constraints):
             continue
-        label = ",".join(f"{n}={v}" for n, v in overrides.items())
+        label = ",".join(f"{n}={v}" for n, v in swept.items())
         cp = ConfigPoint(branch.name, "grid", label, cfg, branch.checkpoint)
         if cp.config_hash in seen:
             continue
         seen.add(cp.config_hash)
         points.append(cp)
     return points
+
+
+def focused_grid_manifest(branch: PrecisionBranch, grid_args, points) -> dict:
+    """The inspectable record of the focused-grid selection: the admitted argument set,
+    the interaction rationale, the OFAT-best pins applied to non-gridded candidates, and
+    the emitted config identities ([[RFC-0001:C-SEARCH-STRATEGY]])."""
+    names = list(grid_args)
+    fg = branch.focused_grid
+    pins = {} if fg is None else {k: v for k, v in fg.pins.items() if k not in set(names)}
+    return {
+        "branch": branch.name,
+        "admitted_args": names,
+        "rationale": "" if fg is None else fg.rationale,
+        "pins": pins,
+        "config_hashes": [p.config_hash for p in points],
+    }
+
+
+def write_grid_manifest(manifest: dict, out_dir) -> Path:
+    path = Path(out_dir) / "focused_grid.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(manifest, indent=2, default=str) + "\n")
+    return path
 
 
 def write_dir(points, out_dir) -> Path:
@@ -153,17 +191,34 @@ def main(argv=None) -> int:
     cfg = load_config(a.config)
     branch = cfg.branch(a.branch)
 
+    grid_names = None
     if a.mode == "ofat":
         points = generate_ofat(branch)
     else:
-        if not a.grid_args:
-            p.error("--mode grid requires --grid-args")
-        points = generate_grid(branch, a.grid_args)
+        fg = branch.focused_grid
+        if fg is None:
+            p.error(
+                f"--mode grid requires a focused_grid block in branch '{a.branch}' so the "
+                f"admitted set and rationale are recorded (C-SEARCH-STRATEGY)"
+            )
+        grid_names = list(fg.args)
+        if a.grid_args and list(a.grid_args) != grid_names:
+            p.error(
+                f"--grid-args {list(a.grid_args)} does not match the branch's declared "
+                f"focused_grid.args {grid_names}; edit the config to change the admitted set"
+            )
+        points = generate_grid(branch, grid_names)
+        print(f"# focused grid: {grid_names}\n# rationale: {fg.rationale}")
 
     if a.save:
         write_dir(points, DEFAULT_OUT_DIR)
-        print(f"wrote {len(points)} configs to {DEFAULT_OUT_DIR}/ "
-              f"(index: {DEFAULT_OUT_DIR}/index.jsonl)")
+        msg = (f"wrote {len(points)} configs to {DEFAULT_OUT_DIR}/ "
+               f"(index: {DEFAULT_OUT_DIR}/index.jsonl)")
+        if a.mode == "grid":
+            manifest = focused_grid_manifest(branch, grid_names, points)
+            mpath = write_grid_manifest(manifest, DEFAULT_OUT_DIR)
+            msg += f"\nwrote focused-grid manifest to {mpath}"
+        print(msg)
         return 0
 
     for cp in points:

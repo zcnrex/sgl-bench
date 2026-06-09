@@ -81,6 +81,21 @@ class Constraint(BaseModel):
         return False
 
 
+class FocusedGrid(BaseModel):
+    """Admitted focused-grid args, interaction rationale, and OFAT-best pins for the
+    non-gridded candidates ([[RFC-0001:C-SEARCH-STRATEGY]])."""
+
+    args: list[Scalar] = Field(min_length=1)
+    rationale: str = Field(min_length=1)
+    pins: dict[str, Scalar] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _unique_args(self) -> "FocusedGrid":
+        if len(self.args) != len(set(self.args)):
+            raise ValueError("focused_grid.args has duplicate names")
+        return self
+
+
 class PrecisionBranch(BaseModel):
     name: str
     checkpoint: str | None = None
@@ -89,6 +104,7 @@ class PrecisionBranch(BaseModel):
     candidate: list[CandidateArg] = Field(default_factory=list)
     constraints: list[Constraint] = Field(default_factory=list)
     baseline: dict[str, Scalar] = Field(default_factory=dict)
+    focused_grid: FocusedGrid | None = None
 
     @property
     def candidate_names(self) -> list[str]:
@@ -147,6 +163,39 @@ class PrecisionBranch(BaseModel):
                 f"branch '{self.name}': baseline assigns non-candidate args "
                 f"(put constant values in 'fixed'): {sorted(extra)}"
             )
+
+        if self.focused_grid is not None:
+            fg = self.focused_grid
+            cand = set(names)
+            unknown = [a for a in fg.args if a not in cand]
+            if unknown:
+                raise ValueError(
+                    f"branch '{self.name}': focused_grid.args are not candidates "
+                    f"(C-SEARCH-STRATEGY): {sorted(unknown)}"
+                )
+            gridded = set(fg.args)
+            for arg, val in fg.pins.items():
+                if arg not in cand:
+                    raise ValueError(
+                        f"branch '{self.name}': focused_grid.pins arg '{arg}' is not a candidate"
+                    )
+                if arg in gridded:
+                    raise ValueError(
+                        f"branch '{self.name}': focused_grid.pins arg '{arg}' is also gridded; "
+                        f"a gridded arg is swept, not pinned"
+                    )
+                allowed = {_key(v) for c in self.candidate if c.name == arg for v in c.values}
+                if _key(val) not in allowed:
+                    raise ValueError(
+                        f"branch '{self.name}': focused_grid.pins '{arg}'={val!r} "
+                        f"is not one of its candidate values"
+                    )
+            unpinned = sorted(cand - gridded - set(fg.pins))
+            if unpinned:
+                raise ValueError(
+                    f"branch '{self.name}': non-gridded candidates must be pinned to their "
+                    f"OFAT-best in focused_grid.pins (C-SEARCH-STRATEGY): {unpinned}"
+                )
 
         declared = set(names) | set(self.fixed)
         for con in self.constraints:

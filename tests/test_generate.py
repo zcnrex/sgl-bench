@@ -7,14 +7,38 @@ from pathlib import Path
 
 from sglbench.argsearch.generate import (
     config_hash,
+    focused_grid_manifest,
     generate_grid,
     generate_ofat,
     is_valid,
     load_config,
     write_dir,
+    write_grid_manifest,
 )
+from sglbench.argsearch.schema import SearchConfig
 
 CONFIG = Path(__file__).resolve().parents[1] / "configs" / "nemotron_v3_ultra.yaml"
+
+
+def _pin_branch():
+    """Branch whose focused_grid pins a non-gridded candidate away from its baseline."""
+    return SearchConfig.model_validate({
+        "model": "m",
+        "precision_branches": [{
+            "name": "b",
+            "fixed": {"quantization": "modelopt_fp4"},
+            "candidate": [
+                {"name": "g", "values": [1, 2]},
+                {"name": "p", "values": ["lo", "hi"]},
+            ],
+            "baseline": {"g": 1, "p": "lo"},
+            "focused_grid": {
+                "args": ["g"],
+                "rationale": "g interacts; p pinned to its OFAT-best",
+                "pins": {"p": "hi"},
+            },
+        }],
+    }).branch("b")
 
 
 class GenerateTest(unittest.TestCase):
@@ -62,6 +86,43 @@ class GenerateTest(unittest.TestCase):
     def test_grid_rejects_non_candidate(self):
         with self.assertRaises(KeyError):
             generate_grid(self.branch, ["not-an-arg"])
+
+    def test_grid_uses_declared_focused_grid_when_args_omitted(self):
+        pts = generate_grid(self.branch)
+        seen = {
+            (p.args["ep-size"], p.args["moe-a2a-backend"],
+             p.args["dp-size"], p.args["enable-dp-attention"])
+            for p in pts
+        }
+        self.assertIn((1, "none", 1, False), seen)
+        self.assertIn((4, "deepep", 4, True), seen)
+
+    def test_grid_pins_non_gridded_to_ofat_best(self):
+        branch = _pin_branch()
+        pts = generate_grid(branch)
+        self.assertEqual({p.args["g"] for p in pts}, {1, 2})
+        self.assertTrue(all(p.args["p"] == "hi" for p in pts))
+        self.assertTrue(all(p.label.startswith("g=") for p in pts))
+
+    def test_manifest_records_admitted_set_and_rationale(self):
+        branch = _pin_branch()
+        pts = generate_grid(branch)
+        m = focused_grid_manifest(branch, ["g"], pts)
+        self.assertEqual(m["admitted_args"], ["g"])
+        self.assertEqual(m["pins"], {"p": "hi"})
+        self.assertTrue(m["rationale"])
+        self.assertEqual(m["config_hashes"], [p.config_hash for p in pts])
+
+    def test_write_grid_manifest_creates_file(self):
+        branch = _pin_branch()
+        pts = generate_grid(branch)
+        m = focused_grid_manifest(branch, ["g"], pts)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = write_grid_manifest(m, tmp)
+            self.assertEqual(path.name, "focused_grid.json")
+            loaded = json.loads(path.read_text())
+            self.assertEqual(loaded["admitted_args"], ["g"])
+            self.assertEqual(loaded["rationale"], m["rationale"])
 
     def test_config_hash_stable_and_distinct(self):
         pts = generate_ofat(self.branch)

@@ -15,6 +15,7 @@ restart-required configs), and one or more `precision_branches`. Within a branch
 | `candidate` | args to vary (≤ 10); each has a `values` list |
 | `constraints` | illegal-combination rules (`when` → `forbid` / `require`) |
 | `baseline` | one starting value per candidate; must itself be constraint-valid |
+| `focused_grid` | optional: the admitted grid `args`, the interaction `rationale`, and OFAT-best `pins` for the non-gridded candidates (RFC-0001:C-SEARCH-STRATEGY) |
 
 Precision (e.g. `quantization`) is a top-level **branch**, never a candidate axis
 (RFC-0001:C-PRECISION-BRANCH) — each branch may have its own checkpoint and baseline.
@@ -90,3 +91,25 @@ generator prunes the lone-change attempts — they appear only in a focused grid
 
 A boolean candidate (`enable-dp-attention: [false, true]`) renders as a bare flag:
 `--enable-dp-attention` is emitted only when `true`, omitted when `false`.
+
+## Focused grid
+
+The second search stage (RFC-0001:C-SEARCH-STRATEGY) is a joint grid over only the
+candidates that both showed OFAT sensitivity and plausibly interact. That selection is
+declared per branch so it is recorded and inspectable, rather than passed ad-hoc on the
+command line:
+
+```yaml
+focused_grid:
+  args: [ep-size, moe-a2a-backend, dp-size, enable-dp-attention]   # swept jointly
+  rationale: >-
+    Why these args are admitted (e.g. coupled pairs OFAT cannot toggle individually).
+  pins:                          # OFAT-best for the surviving, non-gridded candidates
+    attention-backend: trtllm_mha
+    mamba-backend: flashinfer
+```
+
+Validation requires a non-empty `rationale`, that every `args` entry is a candidate, and
+that **every non-gridded candidate appears in `pins`** with an allowed value — so the grid
+pins survivors to their OFAT-best rather than silently falling back to baseline.
+`--mode grid` reads this block; see [generate.md](generate.md).

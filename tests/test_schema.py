@@ -91,6 +91,48 @@ class SchemaTest(unittest.TestCase):
         )
         self.assertEqual([b.name for b in cfg.precision_branches], ["nvfp4", "fp8"])
 
+    def test_focused_grid_valid(self):
+        cfg = _config({
+            "candidate": [{"name": "a", "values": [1, 2]}, {"name": "b", "values": [3, 4]}],
+            "baseline": {"a": 1, "b": 3},
+            "focused_grid": {"args": ["a"], "rationale": "a interacts", "pins": {"b": 4}},
+        })
+        fg = cfg.branch("b").focused_grid
+        self.assertEqual(fg.args, ["a"])
+        self.assertEqual(fg.pins, {"b": 4})
+
+    def test_focused_grid_arg_must_be_candidate(self):
+        with self.assertRaisesRegex(ValidationError, "focused_grid.args are not candidates"):
+            _config({"focused_grid": {"args": ["nope"], "rationale": "x"}})
+
+    def test_focused_grid_requires_rationale(self):
+        with self.assertRaises(ValidationError):
+            _config({"focused_grid": {"args": ["a"], "rationale": ""}})
+
+    def test_focused_grid_pin_must_be_candidate(self):
+        with self.assertRaisesRegex(ValidationError, "pins arg 'nope' is not a candidate"):
+            _config({"focused_grid": {"args": ["a"], "rationale": "x", "pins": {"nope": 1}}})
+
+    def test_focused_grid_pin_not_gridded(self):
+        with self.assertRaisesRegex(ValidationError, "is also gridded"):
+            _config({"focused_grid": {"args": ["a"], "rationale": "x", "pins": {"a": 2}}})
+
+    def test_focused_grid_pin_value_must_be_allowed(self):
+        with self.assertRaisesRegex(ValidationError, "not one of its candidate values"):
+            _config({
+                "candidate": [{"name": "a", "values": [1, 2]}, {"name": "b", "values": [3, 4]}],
+                "baseline": {"a": 1, "b": 3},
+                "focused_grid": {"args": ["a"], "rationale": "x", "pins": {"b": 99}},
+            })
+
+    def test_focused_grid_requires_all_nongridded_pinned(self):
+        with self.assertRaisesRegex(ValidationError, "non-gridded candidates must be pinned"):
+            _config({
+                "candidate": [{"name": "a", "values": [1, 2]}, {"name": "b", "values": [3, 4]}],
+                "baseline": {"a": 1, "b": 3},
+                "focused_grid": {"args": ["a"], "rationale": "x"},
+            })
+
 
 if __name__ == "__main__":
     unittest.main()

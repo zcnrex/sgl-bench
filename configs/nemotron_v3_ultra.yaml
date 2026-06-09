@@ -89,6 +89,22 @@ precision_branches:
       - name: enable-dp-attention       # no-value boolean flag; coupled with dp-size
         values: [false, true]
 
+    # Admitted focused-grid selection (C-SEARCH-STRATEGY). The non-gridded candidates are
+    # pinned to their OFAT-best value; the coupled pairs are swept jointly below.
+    focused_grid:
+      args: [ep-size, moe-a2a-backend, dp-size, enable-dp-attention]
+      rationale: >-
+        ep-size/moe-a2a-backend and dp-size/enable-dp-attention are coupled pairs that OFAT
+        cannot vary individually (a single-arg change is always constraint-invalid), so their
+        interaction can only be measured jointly. The remaining candidates showed independent
+        OFAT sensitivity and are pinned to their OFAT-best value during this grid.
+      pins:
+        attention-backend: trtllm_mha
+        mamba-backend: flashinfer
+        mamba-scheduler-strategy: extra_buffer_lazy
+        mamba-ssm-dtype: bfloat16
+        mamba-full-memory-ratio: 0.9
+
     # Illegal combinations pruned before launch (C-CONFIG-SOURCE). ep-size/moe-a2a-backend
     # and dp-size/enable-dp-attention are coupled pairs: each "on" mode needs its partner
     # arg, and the "off" mode must not request it. OFAT cannot toggle either pair by a

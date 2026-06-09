@@ -6,16 +6,22 @@ The generator emits only constraint-valid *restart-required* server configs
 
 Two modes implement the staged search of RFC-0001:C-SEARCH-STRATEGY — start with `ofat`
 (sensitivity around the baseline), then run a focused `grid` over the few args that survive
-and plausibly interact.
+and plausibly interact. The grid's admitted argument set, the interaction rationale, and the
+OFAT-best `pins` for the non-gridded candidates are declared in the branch's `focused_grid`
+block (see [config.md](config.md)) so the selection is recorded and inspectable; `--mode
+grid` reads them from there.
 
 ```bash
 # OFAT: vary one candidate at a time around the baseline
 python -m sglbench.argsearch --config configs/nemotron_v3_ultra.yaml --branch nvfp4 --mode ofat
 
-# Focused grid over a named subset of candidates
-python -m sglbench.argsearch --config configs/nemotron_v3_ultra.yaml --branch nvfp4 \
-    --mode grid --grid-args ep-size moe-a2a-backend
+# Focused grid over the branch's declared focused_grid.args
+python -m sglbench.argsearch --config configs/nemotron_v3_ultra.yaml --branch nvfp4 --mode grid
 ```
+
+`--grid-args` is accepted only as a guard: if supplied it MUST equal the declared
+`focused_grid.args`, otherwise the run is rejected. Change the admitted set by editing the
+config, not the command line.
 
 ## Output formats
 
@@ -47,8 +53,10 @@ ce798d170e76	nvfp4/ofat	mamba-scheduler-strategy=no_buffer
 
 Pass `--save` to write per-config files to `out/` instead of stdout — the directory is
 created automatically, one `<config_hash>.json` per config plus an `index.jsonl` manifest.
-The hash-named files are the config's provenance identity (RFC-0001:C-MEASUREMENT). `out/`
-is gitignored.
+The hash-named files are the config's provenance identity (RFC-0001:C-MEASUREMENT). In
+`--mode grid` a `focused_grid.json` is also written, recording the admitted args, the
+rationale, the applied pins, and the emitted config hashes (RFC-0001:C-SEARCH-STRATEGY).
+`out/` is gitignored.
 
 ```bash
 python -m sglbench.argsearch --config configs/nemotron_v3_ultra.yaml --branch nvfp4 \
@@ -58,11 +66,12 @@ python -m sglbench.argsearch --config configs/nemotron_v3_ultra.yaml --branch nv
 
 ## Coupled-pair example
 
-`ep-size`/`moe-a2a-backend` and `dp-size`/`enable-dp-attention` only appear in a grid:
+`ep-size`/`moe-a2a-backend` and `dp-size`/`enable-dp-attention` only appear in a grid; the
+seed config admits all four in `focused_grid.args`:
 
 ```
 python -m sglbench.argsearch --config configs/nemotron_v3_ultra.yaml --branch nvfp4 \
-    --mode grid --grid-args ep-size moe-a2a-backend dp-size enable-dp-attention --format label
+    --mode grid --format label
 # 16 raw combos -> 4 valid (each pair on-on or off-off):
 #   ep1/none   + dp1/off
 #   ep1/none   + dp4/on
@@ -78,7 +87,7 @@ from sglbench.argsearch import load_config, generate_ofat, generate_grid
 cfg = load_config("configs/nemotron_v3_ultra.yaml")
 branch = cfg.branch("nvfp4")
 points = generate_ofat(branch)                       # list[ConfigPoint]
-grid = generate_grid(branch, ["ep-size", "moe-a2a-backend"])
+grid = generate_grid(branch)                         # uses branch.focused_grid.args + pins
 ```
 
 Each `ConfigPoint` carries `branch`, `mode`, `label`, `args` (dict), `checkpoint`, and

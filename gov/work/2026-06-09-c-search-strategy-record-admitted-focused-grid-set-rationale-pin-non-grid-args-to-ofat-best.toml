@@ -1,0 +1,43 @@
+#:schema ../schema/work.schema.json
+
+[govctl]
+id = "WI-2026-06-09-009"
+title = "C-SEARCH-STRATEGY: record admitted focused-grid set + rationale, pin non-grid args to OFAT-best"
+status = "done"
+created = "2026-06-09"
+started = "2026-06-09"
+completed = "2026-06-09"
+refs = ["RFC-0001"]
+
+[content]
+description = "Close the C-SEARCH-STRATEGY implementation gap. The focused joint grid must (1) pin candidate args that did not survive OFAT to their OFAT-best value (today generate_grid falls back to baseline via _assemble), and (2) record the admitted grid-arg set and the interaction rationale as an inspectable artifact (today --grid-args is ad-hoc CLI input that is never persisted). Declare the focused grid in the versioned config per C-CONFIG-SOURCE/ADR-0002 and emit a manifest alongside generated configs."
+
+[[content.acceptance_criteria]]
+text = "govctl check passes"
+status = "done"
+category = "chore"
+
+[[content.acceptance_criteria]]
+text = "PrecisionBranch schema gains a validated focused_grid (admitted args subset of candidates, required non-empty rationale, OFAT-best pins validated against candidate values)"
+status = "done"
+category = "added"
+
+[[content.acceptance_criteria]]
+text = "focused-grid generation pins non-grid candidate args to their declared OFAT-best (pins) rather than baseline"
+status = "done"
+category = "added"
+
+[[content.acceptance_criteria]]
+text = "generator records the admitted set + rationale as an inspectable artifact (versioned config + emitted grid manifest)"
+status = "done"
+category = "added"
+
+[[content.acceptance_criteria]]
+text = "tests cover admitted-set recording, the rationale requirement, and OFAT-best pinning"
+status = "done"
+category = "chore"
+
+[[content.acceptance_criteria]]
+text = "compliance-checker finds no Critical C-SEARCH-STRATEGY gap"
+status = "done"
+category = "chore"
