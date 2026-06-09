@@ -1,0 +1,44 @@
+#:schema ../schema/work.schema.json
+
+[govctl]
+id = "WI-2026-06-09-005"
+title = "Loop driver: outer restart-required loop + inner workload sweep"
+status = "done"
+created = "2026-06-09"
+started = "2026-06-09"
+completed = "2026-06-09"
+refs = ["RFC-0001"]
+depends_on = ["WI-2026-06-09-004"]
+
+[content]
+description = "Drive the search per RFC-0001:C-LOOP-STRUCTURE: an outer loop over generator ConfigPoints that relaunches the server once per restart-required config, and an inner loop that sweeps the workload axes (isl/osl pairs x concurrency) against that single live server without relaunching. Workload axes must not be expanded into the outer loop. The inner loop invokes the WI-004 measurement unit per workload point. Server lifecycle is behind a launch/health/shutdown interface so orchestration is unit-testable without a GPU."
+
+[[content.acceptance_criteria]]
+text = "govctl check passes"
+status = "done"
+category = "chore"
+
+[[content.acceptance_criteria]]
+text = "Outer loop relaunches the server exactly once per restart-required ConfigPoint"
+status = "done"
+category = "added"
+
+[[content.acceptance_criteria]]
+text = "Inner loop sweeps all workload-axis points against one live server with no relaunch"
+status = "done"
+category = "added"
+
+[[content.acceptance_criteria]]
+text = "Workload axes are never permuted into the outer (restart-required) loop"
+status = "done"
+category = "added"
+
+[[content.acceptance_criteria]]
+text = "Server is shut down before the next outer iteration launches"
+status = "done"
+category = "added"
+
+[[content.acceptance_criteria]]
+text = "Unit tests assert one launch per config and full workload coverage per server using a fake server handle"
+status = "done"
+category = "chore"

@@ -1,0 +1,201 @@
+"""Measurement of a single (config, workload-point) for the arg search.
+
+Implements [[RFC-0001:C-MEASUREMENT]]: every measured configuration is warmed up
+before any recorded timing, measured with at least two repeat runs, and recorded with
+full reproducibility provenance -- config identity (content hash), the workload point,
+the measured metrics, and the execution environment (SGLang commit, library versions,
+and the cluster networking environment variables in effect).
+
+The actual benchmark transport (genai-bench / bench_one_batch_server against a live
+server) is abstracted behind the BenchClient protocol so this logic is exercised
+without a GPU. A workload point is one inner-loop coordinate
+([[RFC-0001:C-LOOP-STRUCTURE]]); sweeping it is the driver's job, not this module's.
+"""
+
+from __future__ import annotations
+
+import os
+from dataclasses import asdict, dataclass, field
+from importlib import metadata
+from statistics import fmean, median
+from typing import Protocol, runtime_checkable
+
+MIN_REPEATS = 2
+
+PROVENANCE_LIBRARIES = (
+    "sglang",
+    "sgl-kernel",
+    "torch",
+    "flashinfer-python",
+    "flashinfer",
+    "transformers",
+)
+
+NETWORK_ENV_PREFIXES = (
+    "NCCL_",
+    "TORCH_NCCL_",
+    "NVSHMEM_",
+    "GLOO_",
+    "UCX_",
+    "OMPI_",
+    "PMIX_",
+    "IB_",
+    "RDMA_",
+    "RDMAV_",
+    "MLX4_",
+    "MLX5_",
+    "EFA_",
+    "FI_",
+    "SHARP_",
+    "HCOLL_",
+    "GDRCOPY_",
+    "NVLS_",
+    "GPU_",
+)
+
+NETWORK_ENV_NAMES = (
+    "MASTER_ADDR",
+    "MASTER_PORT",
+    "WORLD_SIZE",
+    "RANK",
+    "LOCAL_RANK",
+    "LOCAL_WORLD_SIZE",
+    "GROUP_RANK",
+    "NODE_RANK",
+)
+
+NETWORK_ENV_EXTRA_VAR = "SGLBENCH_NET_ENV_EXTRA"
+
+
+@dataclass(frozen=True)
+class WorkloadPoint:
+    """One inner-loop coordinate: a fixed workload swept against a live server."""
+
+    isl: int
+    osl: int
+    concurrency: int
+
+    @property
+    def label(self) -> str:
+        return f"isl{self.isl}-osl{self.osl}-c{self.concurrency}"
+
+
+@runtime_checkable
+class BenchClient(Protocol):
+    """Transport to a live server. Implementations wrap the real benchmark tools."""
+
+    def warmup(self, point: WorkloadPoint) -> None:
+        """Run an unrecorded pass to prime caches/CUDA graphs before timing."""
+
+    def measure(self, point: WorkloadPoint) -> dict[str, float]:
+        """Run one recorded pass and return its metrics."""
+
+
+@dataclass
+class MeasurementResult:
+    config_hash: str
+    branch: str
+    label: str
+    workload: dict
+    metrics: dict  # per-metric {mean, median, n} aggregates across repeats
+    repeats: list[dict]  # raw per-repeat metrics
+    environment: dict
+
+    def to_record(self) -> dict:
+        return asdict(self)
+
+
+def _detect_sglang_commit() -> str | None:
+    """SGLang build identity for provenance. Prefer an explicit commit env var, then the
+    installed package version; either is a stable cross-run anchor."""
+    commit = os.environ.get("SGLANG_COMMIT")
+    if commit:
+        return commit
+    try:
+        return metadata.version("sglang")
+    except metadata.PackageNotFoundError:
+        return None
+
+
+def _library_versions() -> dict[str, str]:
+    versions: dict[str, str] = {}
+    for name in PROVENANCE_LIBRARIES:
+        try:
+            versions[name] = metadata.version(name)
+        except metadata.PackageNotFoundError:
+            continue
+    return versions
+
+
+def _extra_prefixes(env: dict) -> tuple[str, ...]:
+    raw = env.get(NETWORK_ENV_EXTRA_VAR, "")
+    return tuple(p for p in (s.strip() for s in raw.split(",")) if p)
+
+
+def _network_env(environ: dict | None = None) -> dict[str, str]:
+    env = os.environ if environ is None else environ
+    prefixes = NETWORK_ENV_PREFIXES + _extra_prefixes(env)
+    return {
+        k: v
+        for k, v in env.items()
+        if k in NETWORK_ENV_NAMES or any(k.startswith(p) for p in prefixes)
+    }
+
+
+def capture_environment(
+    sglang_commit: str | None = None, environ: dict | None = None
+) -> dict:
+    """Reproducibility provenance for the execution environment ([[RFC-0001:C-MEASUREMENT]])."""
+    return {
+        "sglang_commit": sglang_commit or _detect_sglang_commit(),
+        "library_versions": _library_versions(),
+        "network_env": _network_env(environ),
+    }
+
+
+def _aggregate(runs: list[dict[str, float]]) -> dict:
+    """Mean/median per metric across repeats. Keys present in every run are aggregated."""
+    if not runs:
+        return {}
+    common = set(runs[0])
+    for r in runs[1:]:
+        common &= set(r)
+    agg: dict[str, dict] = {}
+    for k in sorted(common):
+        vals = [float(r[k]) for r in runs]
+        agg[k] = {"mean": fmean(vals), "median": median(vals), "n": len(vals)}
+    return agg
+
+
+def measure_point(
+    client: BenchClient,
+    *,
+    config_hash: str,
+    branch: str,
+    point: WorkloadPoint,
+    repeats: int = MIN_REPEATS,
+    environment: dict | None = None,
+) -> MeasurementResult:
+    """Warm up, run `repeats` recorded passes, and build a provenance record.
+
+    Warmup always precedes any recorded timing, and at least MIN_REPEATS measured runs
+    are required ([[RFC-0001:C-MEASUREMENT]]).
+    """
+    if repeats < MIN_REPEATS:
+        raise ValueError(
+            f"repeats={repeats} below the C-MEASUREMENT minimum of {MIN_REPEATS}"
+        )
+
+    client.warmup(point)
+    runs = [client.measure(point) for _ in range(repeats)]
+
+    env = environment if environment is not None else capture_environment()
+    return MeasurementResult(
+        config_hash=config_hash,
+        branch=branch,
+        label=point.label,
+        workload=asdict(point),
+        metrics=_aggregate(runs),
+        repeats=runs,
+        environment=env,
+    )

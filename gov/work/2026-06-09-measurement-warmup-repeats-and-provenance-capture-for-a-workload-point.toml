@@ -1,0 +1,38 @@
+#:schema ../schema/work.schema.json
+
+[govctl]
+id = "WI-2026-06-09-004"
+title = "Measurement: warmup, repeats, and provenance capture for a workload point"
+status = "done"
+created = "2026-06-09"
+started = "2026-06-09"
+completed = "2026-06-09"
+refs = ["RFC-0001"]
+
+[content]
+description = "Measure one (config, workload-point) under RFC-0001:C-MEASUREMENT: warm up before timing, run >=2 repeats, and emit a provenance record capturing config identity (content hash), the workload point, the measured metrics, and the execution environment (SGLang commit, kernel/library versions, cluster networking env vars). Server launch and the benchmark client are abstracted behind interfaces so the logic is unit-testable without a GPU."
+
+[[content.acceptance_criteria]]
+text = "govctl check passes"
+status = "done"
+category = "chore"
+
+[[content.acceptance_criteria]]
+text = "A measurement runs a warmup pass before any recorded timing"
+status = "done"
+category = "added"
+
+[[content.acceptance_criteria]]
+text = "Each workload point is measured with >=2 repeat runs and aggregated"
+status = "done"
+category = "added"
+
+[[content.acceptance_criteria]]
+text = "Each result record carries config_hash, workload point, measured metrics, and environment (SGLang commit, library versions, NCCL/network env vars)"
+status = "done"
+category = "added"
+
+[[content.acceptance_criteria]]
+text = "Unit tests cover warmup-precedes-measurement, repeat count, and provenance completeness using a fake benchmark client"
+status = "done"
+category = "chore"
