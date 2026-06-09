@@ -141,6 +141,23 @@ class PrecisionBranch(BaseModel):
                     f"is not one of its candidate values"
                 )
 
+        extra = set(self.baseline) - set(names)
+        if extra:
+            raise ValueError(
+                f"branch '{self.name}': baseline assigns non-candidate args "
+                f"(put constant values in 'fixed'): {sorted(extra)}"
+            )
+
+        declared = set(names) | set(self.fixed)
+        for con in self.constraints:
+            refs = set(con.when) | set(con.forbid) | set(con.require)
+            undeclared = refs - declared
+            if undeclared:
+                raise ValueError(
+                    f"branch '{self.name}': constraint '{con.name}' references undeclared "
+                    f"args (add to fixed or candidate): {sorted(undeclared)}"
+                )
+
         full = self.merged_baseline()
         for con in self.constraints:
             if con.violated_by(full):

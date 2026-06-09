@@ -10,6 +10,7 @@ dependencies = [
 
 [project.scripts]
 argsearch-generate = "sglbench.argsearch.generate:main"
+argsearch-validate = "sglbench.argsearch.validate:main"
 
 [build-system]
 requires = ["setuptools>=61"]

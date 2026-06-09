@@ -27,22 +27,27 @@ class GenerateTest(unittest.TestCase):
     def test_ofat_count_and_baseline(self):
         pts = generate_ofat(self.branch)
         labels = [p.label for p in pts]
-        # baseline + one valid variation per off-baseline candidate value, minus the
-        # two EP single-changes pruned by the coupling constraints.
-        self.assertEqual(len(pts), 9)
+        self.assertEqual(len(pts), 7)
         self.assertEqual(labels[0], "baseline")
 
-    def test_ofat_prunes_coupled_ep_singletons(self):
+    def test_ofat_prunes_coupled_singletons(self):
         labels = [p.label for p in generate_ofat(self.branch)]
-        # OFAT cannot toggle EP on (needs ep-size AND moe-a2a-backend together).
         self.assertNotIn("ep-size=4", labels)
         self.assertNotIn("moe-a2a-backend=deepep", labels)
+        self.assertNotIn("dp-size=4", labels)
+        self.assertNotIn("enable-dp-attention=True", labels)
 
     def test_focused_grid_ep_pair(self):
         pts = generate_grid(self.branch, ["ep-size", "moe-a2a-backend"])
         self.assertEqual(len(pts), 2)
         seen = {(p.args["ep-size"], p.args["moe-a2a-backend"]) for p in pts}
         self.assertEqual(seen, {(1, "none"), (4, "deepep")})
+
+    def test_focused_grid_dp_pair(self):
+        pts = generate_grid(self.branch, ["dp-size", "enable-dp-attention"])
+        self.assertEqual(len(pts), 2)
+        seen = {(p.args["dp-size"], p.args["enable-dp-attention"]) for p in pts}
+        self.assertEqual(seen, {(1, False), (4, True)})
 
     def test_all_emitted_configs_valid(self):
         cons = self.branch.constraints

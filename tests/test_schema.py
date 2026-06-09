@@ -66,6 +66,15 @@ class SchemaTest(unittest.TestCase):
                 "constraints": [{"name": "no-a1", "when": {}, "forbid": {"a": [1]}}],
             })
 
+    def test_baseline_extra_key_rejected(self):
+        with self.assertRaisesRegex(ValidationError, "non-candidate args"):
+            _config({"baseline": {"a": 1, "chunked-prefill-size": 16384}})
+
+    def test_constraint_undeclared_arg_rejected(self):
+        with self.assertRaisesRegex(ValidationError, "undeclared"):
+            _config({"constraints": [{"name": "dead", "when": {"dp-size": [1]},
+                                      "forbid": {"enable-dp-attention": [True]}}]})
+
     def test_constraint_must_have_effect(self):
         with self.assertRaisesRegex(ValidationError, "must set 'forbid' or 'require'"):
             _config({"constraints": [{"name": "empty", "when": {"a": [1]}}]})

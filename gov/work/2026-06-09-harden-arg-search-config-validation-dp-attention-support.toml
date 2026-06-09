@@ -1,0 +1,41 @@
+#:schema ../schema/work.schema.json
+
+[govctl]
+id = "WI-2026-06-09-002"
+title = "Harden arg-search config validation + dp-attention support"
+status = "done"
+created = "2026-06-09"
+started = "2026-06-09"
+completed = "2026-06-09"
+refs = [
+    "RFC-0001:C-CONFIG-SOURCE",
+    "RFC-0001:C-SEARCH-STRATEGY",
+]
+
+[content]
+description = "Harden the Phase 1 config validator and add a validate command, extending WI-2026-06-09-001 per RFC-0001:C-CONFIG-SOURCE. The validator now rejects baseline keys that are not candidates and constraints that reference undeclared args (both previously passed silently). Adds a one-command validate entrypoint and dp-attention support (dp-size / enable-dp-attention coupled pair, with the no-value flag rendered correctly)."
+
+[[content.acceptance_criteria]]
+text = "govctl check passes and unit tests pass"
+status = "done"
+category = "chore"
+
+[[content.acceptance_criteria]]
+text = "schema rejects baseline keys that are not candidates and constraints referencing undeclared args (RFC-0001:C-CONFIG-SOURCE)"
+status = "done"
+category = "added"
+
+[[content.acceptance_criteria]]
+text = "argsearch-validate command validates a config and summarizes branches, exiting non-zero on error"
+status = "done"
+category = "added"
+
+[[content.acceptance_criteria]]
+text = "config supports dp-attention as a dp-size/enable-dp-attention coupled pair; the no-value flag renders as a bare CLI flag (RFC-0001:C-SEARCH-STRATEGY)"
+status = "done"
+category = "added"
+
+[[content.acceptance_criteria]]
+text = "unit tests cover the two new validations and the dp focused-grid pair"
+status = "done"
+category = "chore"
