@@ -100,7 +100,7 @@ class FocusedGrid(BaseModel):
 class PrecisionBranch(BaseModel):
     name: str = Field(description="Branch identifier, e.g. nvfp4. CONSUMED.")
     checkpoint: str | None = Field(default=None, description="Served model path for this branch; the default served model and `<model>` output slug. CONSUMED.")
-    hardware: str | None = Field(default=None, description="INFORMATIONAL ONLY: recorded for humans/provenance, never consumed by the tooling.")
+    hardware: str | None = Field(default=None, description="Recorded for humans/provenance, never consumed by the tooling. INFORMATIONAL.")
     fixed: dict[str, Scalar] = Field(default_factory=dict, description="Known-best args held constant for every config in the branch. CONSUMED.")
     candidate: list[CandidateArg] = Field(default_factory=list, description="Args to vary (<=10). CONSUMED.")
     constraints: list[Constraint] = Field(default_factory=list, description="Illegal-combination rules filtering generated configs. CONSUMED.")
