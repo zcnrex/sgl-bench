@@ -17,8 +17,20 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .driver import result_line, run_search, workload_points
-from .generate import accuracy_invariant_search, generate_grid, generate_ofat, load_config
-from .measure import capture_environment, environment_digest, model_slug
+from .generate import (
+    accuracy_invariant_search,
+    baseline_config_point,
+    generate_grid,
+    generate_ofat,
+    load_config,
+    spot_check_point,
+)
+from .measure import (
+    capture_environment,
+    environment_digest,
+    model_slug,
+    reconcile_hardware,
+)
 from .objective import build_frontier
 from .sglang_adapter import (
     BenchServingClient,
@@ -98,6 +110,8 @@ def main(argv=None) -> int:
     p.add_argument("--gsm8k-examples", type=int, default=0, help="Run gsm8k accuracy gate per config with N examples (0=disabled)")
     p.add_argument("--gsm8k-threads", type=int, default=32, help="Concurrent threads for the gsm8k eval")
     p.add_argument("--launch-timeout", type=float, default=1800.0, help="Seconds to wait for /health")
+    p.add_argument("--strict-hardware", action="store_true",
+                   help="Abort when the declared branch.hardware does not match the detected accelerator (default: warn)")
     p.add_argument("--out", default=DEFAULT_OUT_DIR, help="Base output dir; results land under <out>/<model>/runs/<transport>/<env>/")
     p.add_argument("--force", action="store_true", help="Re-measure all points, ignoring any existing results.jsonl in the run dir")
     p.add_argument("--frontier", action="store_true", help="Build and print the frontier after the run")
@@ -131,6 +145,16 @@ def main(argv=None) -> int:
                 print(" ".join(build_bench_cmd(base_url, wp, str(target_dir / f"{cp.config_hash}-{wp.label}.jsonl"))))
         return 0
 
+    reconciliation = reconcile_hardware(branch.hardware, environment["hardware"])
+    if reconciliation["status"] == "mismatch":
+        warning = (
+            f"hardware mismatch: branch '{a.branch}' declares {branch.hardware!r} but detected "
+            f"{environment['hardware']!r} ({reconciliation['detail']})"
+        )
+        print(f"WARNING: {warning}", file=sys.stderr)
+        if a.strict_hardware:
+            p.error(f"{warning} (--strict-hardware)")
+
     bench_factory = None
     if a.transport == "serving":
         nump = a.serving_num_prompts or None
@@ -160,12 +184,37 @@ def main(argv=None) -> int:
         )
 
     evaluate_hashes = None
+    spot = None
     if gate is not None and accuracy_invariant_search(branch, points):
-        evaluate_hashes = {points[0].config_hash, points[-1].config_hash}
-        print(
-            f"  accuracy-invariant search: per-config eval skipped; "
-            f"evaluating baseline + spot-check ({len(evaluate_hashes)} config(s))"
-        )
+        spot = spot_check_point(branch, points)
+        if spot is None:
+            print(
+                "  accuracy-invariant search: no constraint-valid all-extreme spot-check; "
+                "evaluating every config instead (C-QUALITY-GATE)"
+            )
+        else:
+            baseline_cp = baseline_config_point(branch)
+            points = [baseline_cp] + [pt for pt in points if pt.config_hash != baseline_cp.config_hash]
+            if spot.config_hash not in {pt.config_hash for pt in points}:
+                points = points + [spot]
+            evaluate_hashes = {baseline_cp.config_hash, spot.config_hash}
+            print(
+                f"  accuracy-invariant search: per-config eval skipped; evaluating "
+                f"baseline {baseline_cp.config_hash} + spot-check {spot.config_hash} ({spot.label})"
+            )
+
+    accuracy_skip = None
+    if evaluate_hashes is not None and spot is not None:
+        accuracy_skip = {
+            "per_config_eval_skipped": True,
+            "reason": "only accuracy-invariant candidates vary; per-config gate eval skipped (C-QUALITY-GATE)",
+            "spot_check": {
+                "config_hash": spot.config_hash,
+                "label": spot.label,
+                "args": spot.args,
+                "gate_result": None,
+            },
+        }
 
     target_dir.mkdir(parents=True, exist_ok=True)
     skip_keys = set() if a.force else read_skip_keys(out_path)
@@ -190,6 +239,14 @@ def main(argv=None) -> int:
              "direction": gate.direction, "gsm8k_examples": a.gsm8k_examples}
             if gate is not None else None
         ),
+        "branch_keys": branch.branch_keys(),
+        "kv_cache_precision_treatment": branch.kv_cache_treatment(),
+        "arg_classification": {
+            c.name: ("accuracy-invariant" if c.accuracy_invariant else "accuracy-active")
+            for c in branch.candidate
+        },
+        "hardware_reconciliation": reconciliation,
+        "accuracy_skip": accuracy_skip,
         "environment": environment,
         "measured_at": datetime.now(timezone.utc).isoformat(),
     }
@@ -212,6 +269,17 @@ def main(argv=None) -> int:
             evaluate_hashes=evaluate_hashes, skip_keys=skip_keys, on_result=sink,
         )
     print(f"wrote {written} records to {out_path} (streamed per workload point)")
+
+    if accuracy_skip is not None:
+        spot_res = next((r for r in results if r.config_hash == spot.config_hash), None)
+        if spot_res is not None:
+            accuracy_skip["spot_check"]["gate_result"] = {
+                "accuracy": spot_res.accuracy,
+                "quality_pass": spot_res.quality_pass,
+            }
+            (target_dir / "manifest.json").write_text(
+                json.dumps(manifest, indent=2, default=str) + "\n"
+            )
 
     if a.frontier and cfg.slo is not None:
         passing, frontier = build_frontier(

@@ -215,6 +215,30 @@ class InvariantSearchTest(unittest.TestCase):
         from sglbench.argsearch.generate import accuracy_invariant_search
         self.assertTrue(accuracy_invariant_search(self.branch, generate_ofat(self.branch)[:1]))
 
+    def test_spot_check_sets_every_varied_invariant_to_an_extreme(self):
+        from sglbench.argsearch.generate import spot_check_point
+        pts = generate_grid(self.branch)
+        spot = spot_check_point(self.branch, pts)
+        self.assertIsNotNone(spot)
+        self.assertEqual(spot.args["ep-size"], 4)
+        self.assertEqual(spot.args["moe-a2a-backend"], "deepep")
+        self.assertEqual(spot.args["dp-size"], 4)
+        self.assertEqual(spot.args["enable-dp-attention"], True)
+        self.assertTrue(is_valid(spot.args, self.branch.constraints))
+
+    def test_spot_check_is_a_real_grid_corner(self):
+        from sglbench.argsearch.generate import spot_check_point
+        pts = generate_grid(self.branch)
+        spot = spot_check_point(self.branch, pts)
+        self.assertIn(spot.config_hash, {p.config_hash for p in pts})
+
+    def test_spot_check_is_baseline_when_nothing_invariant_varies(self):
+        from sglbench.argsearch.generate import spot_check_point
+        base_only = generate_ofat(self.branch)[:1]
+        spot = spot_check_point(self.branch, base_only)
+        self.assertIsNotNone(spot)
+        self.assertEqual(spot.config_hash, base_only[0].config_hash)
+
 
 class GridGateEnforcementTest(unittest.TestCase):
     def _setup(self, tmp, quality_pass):

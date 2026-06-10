@@ -165,6 +165,62 @@ def accuracy_invariant_search(branch: Branch, points) -> bool:
     return varied_candidates.issubset(invariant)
 
 
+def _is_number(v) -> bool:
+    return isinstance(v, (int, float)) and not isinstance(v, bool)
+
+
+def _extreme_choices(values: list, baseline_val) -> list:
+    """Range endpoints ordered most-stressful (furthest from the baseline) first.
+
+    Numeric values use min/max as the endpoints; other values use the first and last of
+    the declared (ordered) sweep. Duplicate endpoints collapse to one choice.
+    """
+    if all(_is_number(v) for v in values):
+        ends = [min(values), max(values)]
+    else:
+        ends = [values[0], values[-1]]
+    uniq: list = []
+    for v in ends:
+        if all(_key(v) != _key(u) for u in uniq):
+            uniq.append(v)
+    if _is_number(baseline_val) and all(_is_number(v) for v in values):
+        uniq.sort(key=lambda v: abs(v - baseline_val), reverse=True)
+    else:
+        uniq.sort(key=lambda v: _key(v) == _key(baseline_val))
+    return uniq
+
+
+def baseline_config_point(branch: Branch) -> ConfigPoint:
+    """The branch baseline configuration as a "baseline"-labeled point. This is the gate
+    reference ([[RFC-0001:C-QUALITY-GATE]]): its accuracy is the per-branch baseline the
+    spot-check and every gated config are judged against."""
+    return ConfigPoint(branch.name, "baseline", "baseline", _assemble(branch, {}), branch.branch_keys())
+
+
+def spot_check_point(branch: Branch, points) -> ConfigPoint | None:
+    """The accuracy-invariant spot-check configuration ([[RFC-0001:C-QUALITY-GATE]]).
+
+    Sets every varied accuracy-invariant candidate to an extreme of its range (others held
+    at baseline), choosing a constraint-valid combination of those extremes. Returns the
+    baseline point when nothing accuracy-invariant varies, or None when no constraint-valid
+    all-extreme assignment exists.
+    """
+    invariant = {c.name for c in branch.candidate if c.accuracy_invariant}
+    varied = varied_args(points) & invariant
+    if not varied:
+        base = _assemble(branch, {})
+        return ConfigPoint(branch.name, "spot-check", "spot-check", base, branch.branch_keys())
+    cands = [c for c in branch.candidate if c.name in varied]
+    choice_lists = [_extreme_choices(c.values, branch.baseline[c.name]) for c in cands]
+    for combo in itertools.product(*choice_lists):
+        overrides = {c.name: v for c, v in zip(cands, combo)}
+        cfg = _assemble(branch, overrides)
+        if is_valid(cfg, branch.constraints):
+            label = "spot-check:" + ",".join(f"{c.name}={v}" for c, v in zip(cands, combo))
+            return ConfigPoint(branch.name, "spot-check", label, cfg, branch.branch_keys())
+    return None
+
+
 def config_dir(base, model: str, mode: str) -> Path:
     """The per-(model, mode) configs directory under `base` ([[ADR-0007]])."""
     return Path(base) / model_slug(model) / "configs" / mode

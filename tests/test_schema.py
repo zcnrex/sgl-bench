@@ -106,6 +106,17 @@ class SchemaTest(unittest.TestCase):
         self.assertEqual(b.kv_cache_precision_value, "fp8_e4m3")
         self.assertEqual(b.branch_keys()["kv_cache_precision"], "fp8_e4m3")
 
+    def test_kv_cache_treatment_branch_key_by_default(self):
+        b = Branch.model_validate(_branch(fixed={"quantization": "modelopt_fp4", "kv-cache-dtype": "fp8_e4m3"}))
+        self.assertEqual(b.kv_cache_treatment(), "branch-key")
+
+    def test_kv_cache_treatment_accuracy_active_when_candidate(self):
+        b = Branch.model_validate(_branch(
+            candidate=[{"name": "kv-cache-dtype", "values": ["fp8_e4m3", "bf16"]}],
+            baseline={"kv-cache-dtype": "fp8_e4m3"},
+        ))
+        self.assertEqual(b.kv_cache_treatment(), "accuracy-active-candidate")
+
     def test_focused_grid_valid(self):
         cfg = _config({
             "candidate": [{"name": "a", "values": [1, 2]}, {"name": "b", "values": [3, 4]}],

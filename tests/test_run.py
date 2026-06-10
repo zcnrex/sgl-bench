@@ -177,6 +177,117 @@ class GateWiringTest(unittest.TestCase):
             self.assertTrue(variant and all(r["quality_pass"] is False for r in variant))
 
 
+INVARIANT_DOC = {
+    "model": "m",
+    "quality_gate": {"dataset": "gsm8k", "metric": "accuracy", "tolerance": 0.05},
+    "branches": [{
+        "name": "b",
+        "fixed": {"quantization": "modelopt_fp4", "kv-cache-dtype": "fp8_e4m3"},
+        "candidate": [
+            {"name": "ep-size", "values": [1, 4], "accuracy_invariant": True},
+            {"name": "dp-size", "values": [1, 4], "accuracy_invariant": True},
+        ],
+        "baseline": {"ep-size": 1, "dp-size": 1},
+    }],
+}
+
+
+class AccuracyInvariantSkipTest(unittest.TestCase):
+    """The accuracy-invariant fast path ([[RFC-0001:C-QUALITY-GATE]]): per-config eval is
+    skipped, but the baseline and a constructed all-extreme spot-check are gate-evaluated and
+    the skip is recorded in the manifest with the spot-check identity and its gate result."""
+
+    def _run(self, cfg_doc, scores, out_dir, extra=(), mode="ofat"):
+        import yaml
+        cfgp = Path(out_dir) / "inv.yaml"
+        cfgp.write_text(yaml.safe_dump(cfg_doc))
+        orig_mgr, orig_ev = run.SGLangServerManager, run.GSM8KEvaluator
+        run.SGLangServerManager = FakeManager
+        it = iter(scores)
+
+        class FakeEval:
+            def __init__(self, base_url, **kw):
+                pass
+
+            def evaluate(self):
+                return {"accuracy": next(it)}
+
+        run.GSM8KEvaluator = FakeEval
+        try:
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                rc = run.main([
+                    "--config", str(cfgp), "--branch", "b", "--mode", mode,
+                    "--concurrency", "1", "--isl-osl", "8192x256",
+                    "--repeats", "2", "--gsm8k-examples", "20", "--out", out_dir, *extra,
+                ])
+            return rc, buf.getvalue()
+        finally:
+            run.SGLangServerManager, run.GSM8KEvaluator = orig_mgr, orig_ev
+
+    def _manifest(self, d, model="m"):
+        td = run.run_dir(d, model, "one-batch", environment_digest(capture_environment()))
+        return json.loads((td / "manifest.json").read_text())
+
+    def test_manifest_records_skip_spotcheck_classification_and_kv_treatment(self):
+        with tempfile.TemporaryDirectory() as d:
+            rc, out = self._run(INVARIANT_DOC, [0.90, 0.89], d)
+            self.assertEqual(rc, 0)
+            m = self._manifest(d)
+            self.assertEqual(m["kv_cache_precision_treatment"], "branch-key")
+            self.assertEqual(
+                m["arg_classification"],
+                {"ep-size": "accuracy-invariant", "dp-size": "accuracy-invariant"},
+            )
+            skip = m["accuracy_skip"]
+            self.assertTrue(skip["per_config_eval_skipped"])
+            self.assertEqual(skip["spot_check"]["args"]["ep-size"], 4)
+            self.assertEqual(skip["spot_check"]["args"]["dp-size"], 4)
+            gr = skip["spot_check"]["gate_result"]
+            self.assertIsNotNone(gr)
+            self.assertTrue(gr["quality_pass"])
+            self.assertEqual(m["hardware_reconciliation"]["status"], "undetermined")
+
+    def test_spotcheck_failure_recorded_in_gate_result(self):
+        with tempfile.TemporaryDirectory() as d:
+            rc, out = self._run(INVARIANT_DOC, [0.90, 0.50], d)
+            self.assertEqual(rc, 0)
+            gr = self._manifest(d)["accuracy_skip"]["spot_check"]["gate_result"]
+            self.assertFalse(gr["quality_pass"])
+
+    def test_grid_mode_spotcheck_is_gate_judged(self):
+        grid_doc = json.loads(json.dumps(INVARIANT_DOC))
+        grid_doc["branches"][0]["focused_grid"] = {
+            "args": ["ep-size", "dp-size"],
+            "rationale": "both vary jointly",
+        }
+        with tempfile.TemporaryDirectory() as d:
+            rc, out = self._run(grid_doc, [0.90, 0.89], d, mode="grid")
+            self.assertEqual(rc, 0)
+            m = self._manifest(d)
+            gr = m["accuracy_skip"]["spot_check"]["gate_result"]
+            self.assertIsNotNone(gr)
+            self.assertIsInstance(gr["quality_pass"], bool)
+            self.assertTrue(gr["quality_pass"])
+            recs = [json.loads(l) for l in results_path(d, model="m").read_text().splitlines()]
+            self.assertTrue(any(r["config_label"] == "baseline" for r in recs))
+
+    def test_strict_hardware_aborts_on_mismatch(self):
+        doc = json.loads(json.dumps(INVARIANT_DOC))
+        doc["branches"][0]["hardware"] = "8xH100"
+        orig_cap = run.capture_environment
+        run.capture_environment = lambda *a, **k: {
+            "hardware": {"accelerator": "NVIDIA B200", "device_count": 4},
+            "sglang_commit": "x", "library_versions": {}, "network_env": {},
+        }
+        try:
+            with tempfile.TemporaryDirectory() as d:
+                with self.assertRaises(SystemExit):
+                    self._run(doc, [0.9, 0.9], d, extra=["--strict-hardware"])
+        finally:
+            run.capture_environment = orig_cap
+
+
 class ReuseTest(unittest.TestCase):
     def _run(self, out_dir, extra):
         orig = run.SGLangServerManager

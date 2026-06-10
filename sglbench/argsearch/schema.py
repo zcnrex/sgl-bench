@@ -29,6 +29,8 @@ SPEC_DECODE_ARGS = {
 
 WEIGHT_PRECISION_ARGS = {"quantization"}
 
+KV_CACHE_DTYPE_ARG = "kv-cache-dtype"
+
 MAX_CANDIDATES = 10  # [[RFC-0001:C-SCOPE]]
 
 
@@ -122,7 +124,18 @@ class Branch(BaseModel):
     def kv_cache_precision_value(self) -> Scalar:
         if self.kv_cache_precision is not None:
             return self.kv_cache_precision
-        return self.fixed.get("kv-cache-dtype")
+        return self.fixed.get(KV_CACHE_DTYPE_ARG)
+
+    def kv_cache_treatment(self) -> str:
+        """Which RFC-0001:C-BRANCH treatment this branch chose for KV-cache precision.
+
+        Returns "accuracy-active-candidate" when kv-cache-dtype is a varied candidate
+        (gated per configuration), else "branch-key" (a recorded branch key discharged by
+        the per-branch baseline validation). The choice MUST be recorded per branch.
+        """
+        if any(c.name == KV_CACHE_DTYPE_ARG for c in self.candidate):
+            return "accuracy-active-candidate"
+        return "branch-key"
 
     def branch_keys(self) -> dict[str, Scalar]:
         """The recorded branch-key identity ([[RFC-0001:C-BRANCH]])."""

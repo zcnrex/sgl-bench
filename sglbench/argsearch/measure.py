@@ -192,6 +192,46 @@ def _detect_hardware(environ: dict | None = None) -> dict:
     return {"accelerator": accelerator, "device_count": device_count}
 
 
+_HW_MODEL_RE = re.compile(r"[a-z]{1,3}\d{2,4}")
+_HW_COUNT_RE = re.compile(r"(\d+)\s*x")
+
+
+def reconcile_hardware(declared: str | None, detected: dict) -> dict:
+    """Reconcile a branch's declared hardware target against the detected accelerator
+    ([[RFC-0001:C-BRANCH]], [[RFC-0001:C-MEASUREMENT]]).
+
+    Returns {declared, detected, status, detail}. `status` is "undetermined" when nothing
+    is declared or no accelerator is detected (e.g. a GPU-free orchestration host), "match"
+    when the declared model token and device count are consistent with what was detected,
+    and "mismatch" only on positive evidence of disagreement -- so an unverifiable host is
+    never falsely flagged.
+    """
+    accel = detected.get("accelerator")
+    count = detected.get("device_count")
+    if not declared or not accel:
+        return {
+            "declared": declared,
+            "detected": detected,
+            "status": "undetermined",
+            "detail": "no declared hardware or no detected accelerator",
+        }
+    issues: list[str] = []
+    declared_clean = _HW_COUNT_RE.sub(" ", declared.lower())
+    dec_models = set(_HW_MODEL_RE.findall(declared_clean))
+    det_models = set(_HW_MODEL_RE.findall(accel.lower()))
+    if dec_models and det_models and not (dec_models & det_models):
+        issues.append(f"accelerator model {sorted(dec_models)} != detected {sorted(det_models)}")
+    m = _HW_COUNT_RE.search(declared.lower())
+    if m and count is not None and int(m.group(1)) != count:
+        issues.append(f"device count {m.group(1)} != detected {count}")
+    return {
+        "declared": declared,
+        "detected": detected,
+        "status": "mismatch" if issues else "match",
+        "detail": "; ".join(issues) if issues else "consistent",
+    }
+
+
 def capture_environment(
     sglang_commit: str | None = None, environ: dict | None = None
 ) -> dict:

@@ -10,6 +10,7 @@ from sglbench.argsearch.measure import (
     label_slug,
     measure_point,
     model_slug,
+    reconcile_hardware,
 )
 
 POINT = WorkloadPoint(isl=8192, osl=1024, concurrency=32)
@@ -181,6 +182,32 @@ class IdentityHelpersTest(unittest.TestCase):
         self.assertEqual(label_slug("attention-backend=flashinfer"), "attention-backend__flashinfer")
         self.assertEqual(label_slug("baseline"), "baseline")
         self.assertNotIn("/", label_slug("a/b=c"))
+
+
+class ReconcileHardwareTest(unittest.TestCase):
+    """Declared branch.hardware vs detected accelerator ([[RFC-0001:C-BRANCH]])."""
+
+    def test_undetermined_without_detected_accelerator(self):
+        r = reconcile_hardware("4xB200 single-node TP4", {"accelerator": None, "device_count": None})
+        self.assertEqual(r["status"], "undetermined")
+
+    def test_undetermined_without_declared_hardware(self):
+        r = reconcile_hardware(None, {"accelerator": "NVIDIA B200", "device_count": 4})
+        self.assertEqual(r["status"], "undetermined")
+
+    def test_match_when_model_and_count_agree(self):
+        r = reconcile_hardware("4xB200 single-node TP4", {"accelerator": "NVIDIA B200", "device_count": 4})
+        self.assertEqual(r["status"], "match")
+
+    def test_mismatch_on_accelerator_model(self):
+        r = reconcile_hardware("4xB200", {"accelerator": "NVIDIA H100", "device_count": 4})
+        self.assertEqual(r["status"], "mismatch")
+        self.assertIn("model", r["detail"])
+
+    def test_mismatch_on_device_count(self):
+        r = reconcile_hardware("8xB200", {"accelerator": "NVIDIA B200", "device_count": 4})
+        self.assertEqual(r["status"], "mismatch")
+        self.assertIn("count", r["detail"])
 
 
 if __name__ == "__main__":
