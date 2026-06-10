@@ -4,10 +4,15 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import io
+from contextlib import redirect_stdout
+
 from sglbench.argsearch.objective import (
     FrontierEntry,
     build_frontier,
     gate_failed_pins,
+    gate_status,
+    main,
     pareto_frontier,
     passes_quality_gate,
     passes_slo,
@@ -239,6 +244,103 @@ class GateFailedPinsTest(unittest.TestCase):
 
     def test_pin_without_record_not_flagged(self):
         self.assertEqual(gate_failed_pins(self.branch, [], GATE), [])
+
+
+class GateStatusTest(unittest.TestCase):
+    def test_no_gate_is_na(self):
+        e = to_entry(gated_rec("a", accuracy=0.6))
+        self.assertEqual(gate_status(e, None), ("n-a", None))
+
+    def test_stamped_pass_and_fail(self):
+        passed = to_entry(gated_rec("a", accuracy=0.6, quality_pass=True))
+        failed = to_entry(gated_rec("b", accuracy=0.1, quality_pass=False))
+        self.assertEqual(gate_status(passed, GATE), ("PASS", 0.6))
+        self.assertEqual(gate_status(failed, GATE), ("FAIL", 0.1))
+
+    def test_unmeasured_is_na_not_fail(self):
+        e = to_entry(gated_rec("a"))
+        self.assertEqual(gate_status(e, GATE), ("n-a", None))
+
+    def test_recompute_from_accuracy(self):
+        good = to_entry(gated_rec("a", accuracy=0.6))
+        bad = to_entry(gated_rec("b", accuracy=0.1))
+        self.assertEqual(gate_status(good, GATE)[0], "PASS")
+        self.assertEqual(gate_status(bad, GATE)[0], "FAIL")
+
+
+CONFIG_YAML = """\
+model: m
+slo:
+  per_token_ms: 40
+  ttft_p95_ms: 5000
+quality_gate:
+  dataset: gpqa
+  metric: accuracy
+  threshold: 0.45
+  direction: higher
+precision_branches:
+  - name: nvfp4
+"""
+
+
+class InspectMainTest(unittest.TestCase):
+    def _write(self, d, records):
+        cfg = Path(d) / "config.yaml"
+        cfg.write_text(CONFIG_YAML)
+        res = Path(d) / "results.jsonl"
+        import json as _json
+        res.write_text("\n".join(_json.dumps(r) for r in records) + "\n")
+        return str(cfg), str(res)
+
+    def _records(self):
+        return [
+            gated_rec("good", ptok=20, decode_thr=1600, accuracy=0.6),
+            gated_rec("fast-bad", ptok=15, decode_thr=900, accuracy=0.1),
+            gated_rec("unmeasured", ptok=18, decode_thr=1200),
+        ]
+
+    def test_inspect_ranks_failing_and_unmeasured(self):
+        with tempfile.TemporaryDirectory() as d:
+            cfg, res = self._write(d, self._records())
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                rc = main(["--config", cfg, "--results", res, "--inspect"])
+            out = buf.getvalue()
+        self.assertEqual(rc, 0)
+        self.assertIn("INSPECTION VIEW", out)
+        self.assertIn("eligible(ignoring gate)=3", out)
+        for h in ("good", "fast-bad", "unmeasured"):
+            self.assertIn(h, out)
+
+    def test_inspect_annotates_each_row(self):
+        with tempfile.TemporaryDirectory() as d:
+            cfg, res = self._write(d, self._records())
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                main(["--config", cfg, "--results", res, "--inspect"])
+            out = buf.getvalue()
+        self.assertIn("gate=PASS(accuracy=0.6)", out)
+        self.assertIn("gate=FAIL(accuracy=0.1)", out)
+        self.assertIn("gate=n-a(accuracy=n/a)", out)
+
+    def test_inspect_refuses_out(self):
+        with tempfile.TemporaryDirectory() as d:
+            cfg, res = self._write(d, self._records())
+            with self.assertRaises(SystemExit):
+                main(["--config", cfg, "--results", res, "--inspect",
+                      "--out", str(Path(d) / "f.jsonl")])
+
+    def test_default_path_unchanged_excludes_failing(self):
+        with tempfile.TemporaryDirectory() as d:
+            cfg, res = self._write(d, self._records())
+            out_path = Path(d) / "frontier.jsonl"
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                main(["--config", cfg, "--results", res, "--out", str(out_path)])
+            written = out_path.read_text()
+        self.assertIn("good", written)
+        self.assertNotIn("fast-bad", written)
+        self.assertNotIn("unmeasured", written)
 
 
 if __name__ == "__main__":

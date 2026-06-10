@@ -1,0 +1,111 @@
+#:schema ../schema/adr.schema.json
+
+[govctl]
+id = "ADR-0008"
+title = "Inspect-mode frontier view for gate-failing configs (--inspect)"
+status = "accepted"
+date = "2026-06-10"
+refs = [
+    "RFC-0001:C-QUALITY-GATE",
+    "RFC-0001:C-OBJECTIVE",
+]
+
+[content]
+context = """
+`argsearch-frontier` (`sglbench.argsearch.objective`) consumes the measurement record
+stream (`results.jsonl`) and emits the decode-throughput-versus-decode-latency Pareto
+frontier under the SLO — the *acceptable results* of [[RFC-0001:C-OBJECTIVE]]. It applies
+the accuracy acceptance gate of [[RFC-0001:C-QUALITY-GATE]]: configs that fail the gate
+(or have no accuracy measured, e.g. a perf-only OFAT sweep where `accuracy=null`) are
+moved to a `quality_excluded` bucket and never appear in the ranked frontier or in the
+`--out` artifact.
+
+A common, legitimate need is to read the *perf numbers* of those excluded configs — the
+speed-versus-quality trade-off. [[RFC-0001:C-QUALITY-GATE]] explicitly requires this be
+possible: a failing configuration "MUST still be recorded in the same measurement record
+stream … so that a speed-versus-quality trade-off remains inspectable," retained "for
+inspection and possible explicit human override." Today the only ways to see that view are
+to hand-parse `results.jsonl` or to feed the tool a doctored gate-free config copy — both
+awkward and the latter risks writing degraded configs into a `frontier.jsonl` that readers
+treat as acceptable results.
+
+The constraint that bounds the design: the same clause states a failing configuration
+"MUST NOT appear in the acceptable results" and "MUST NOT thereby be promoted into the
+acceptable results." The canonical `--out` frontier artifact *is* the acceptable results.
+So any inspection affordance must surface perf for gate-failing configs without letting
+them leak into that artifact."""
+decision = """
+Add an `--inspect` flag to `argsearch-frontier` (`sglbench.argsearch.objective`) that
+renders a read-only inspection view of the frontier, honoring [[RFC-0001:C-QUALITY-GATE]]'s
+mandate that the speed-versus-quality trade-off "remains inspectable" while never letting a
+gate-failing config reach the acceptable results.
+
+Behavior when `--inspect` is set:
+
+1. The frontier is built as if no accuracy gate were defined (gate-failing and
+   accuracy-unmeasured configs become eligible for ranking), so their decode-throughput /
+   per-token-latency / TTFT are shown under the SLO and Pareto semantics of
+   [[RFC-0001:C-OBJECTIVE]].
+2. Each ranked row is annotated with its true gate status — `PASS` / `FAIL` / `n-a` — plus
+   the gate metric value, so the distinction between acceptable and degraded configs is
+   never erased (this is the inspection signal that informs any explicit human override).
+3. A banner states the output is an INSPECTION VIEW that includes gate-failing configs and
+   is NOT the acceptable results, citing [[RFC-0001:C-QUALITY-GATE]].
+4. `--out` is refused while `--inspect` is set; the inspection view is never written to the
+   canonical frontier artifact. A user who wants a file redirects stdout deliberately.
+
+Without `--inspect`, behavior is unchanged: the gate is enforced and only gate-passing
+configs are ranked and written to `--out`. The flag does not modify `results.jsonl`, does
+not change any config's recorded accuracy or pass/fail flag, and never disables the gate
+for the canonical path — it only changes which configs the *printed* frontier displays.
+
+The flag is named `--inspect` (not `--ignore-quality-gate`) to name the intent — a
+read-only trade-off view — matching the clause's own phrase "retained only for inspection.""""
+consequences = """
+Positive:
+- The speed-versus-quality trade-off required by [[RFC-0001:C-QUALITY-GATE]] becomes a
+  first-class, one-command view instead of hand-parsing `results.jsonl` or maintaining a
+  doctored gate-free config.
+- The print-only guardrail makes it structurally impossible for an inspection run to write
+  a degraded config into the canonical `--out` acceptable-results artifact, so the clause's
+  "MUST NOT appear in the acceptable results" holds by construction, not by convention.
+- Per-row gate annotation keeps the acceptable/degraded distinction visible, so a human
+  override decision is made with the accuracy result in front of them. Accuracy-unmeasured
+  (perf-only OFAT) configs surface as `n-a` rows; in inspect mode these are expected and
+  intended, not a gate bug.
+
+Negative / trade-offs:
+- `--inspect` and `--out` are mutually exclusive; persisting the inspection view requires
+  the user to redirect stdout, which is a deliberate manual step (intended friction).
+- The inspection frontier ranks configs the gate would exclude; a reader who ignores the
+  banner and gate column could misread it as acceptable results. Mitigated by the banner
+  and per-row status, not eliminated.
+- `--inspect` reuses the frontier builder with the gate disabled, so the gated and inspect
+  rankings are two behavioral paths over one builder; a future change to gate-enforcement
+  logic must keep them in sync or risk the inspect view diverging from the gated view.
+
+Follow-up:
+- This is a tooling affordance under existing obligations; it adds no normative clause and
+  requires no RFC version bump. Any explicit human override that admits a flagged config
+  into acceptable results remains separately governed by [[RFC-0001:C-QUALITY-GATE]] (such
+  an override "MUST itself be recorded in the measurement record stream") and is out of
+  scope for `--inspect`, which is strictly read-only."""
+
+[[content.alternatives]]
+text = "Add --inspect, print-only with per-row gate status: A read-only view mode on argsearch-frontier that builds the frontier ignoring the gate but annotates each row with its true gate status (PASS/FAIL/n-a + accuracy value), prints a banner that it is NOT acceptable results, and refuses --out so nothing can be written to the canonical frontier artifact. Persisting requires the user to redirect stdout deliberately."
+status = "accepted"
+
+[[content.alternatives]]
+text = "Persist to a labeled inspection artifact: Same --inspect view but allow --out, forcing a distinct filename (e.g. *.inspection.jsonl) and stamping every record quality_gate_ignored=true."
+status = "rejected"
+rejection_reason = "Adds a second on-disk frontier-shaped file that a tool or human can still mistake for, or accidentally feed downstream as, acceptable results; the stamp is easy to ignore. Print-only removes the leak path entirely while the user can still redirect stdout if they truly want a file. C-QUALITY-GATE's bar is best met by making the unsafe artifact impossible, not merely labeled."
+
+[[content.alternatives]]
+text = "Name the flag --ignore-quality-gate: A flag named for what it bypasses."
+status = "rejected"
+rejection_reason = "Frames the feature as defeating the gate, inviting use as a way to ship degraded configs; the gate is never actually disabled (results are unchanged, configs stay flagged). --inspect names the intent — a read-only trade-off view — matching C-QUALITY-GATE's own term 'retained only for inspection.'"
+
+[[content.alternatives]]
+text = "Separate read-only report subcommand (no frontier semantics): A new command that just tabulates results.jsonl perf with no SLO/Pareto ranking."
+status = "rejected"
+rejection_reason = "Loses the SLO + Pareto ranking that makes the view useful for the same trade-off judgement, and duplicates frontier/measurement-loading logic in a second code path. Reusing the existing frontier builder under an inspect view keeps one ranking implementation."

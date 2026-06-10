@@ -1,0 +1,58 @@
+#:schema ../schema/work.schema.json
+
+[govctl]
+id = "WI-2026-06-10-003"
+title = "Add --inspect read-only frontier view for gate-failing configs (ADR-0008)"
+status = "done"
+created = "2026-06-10"
+started = "2026-06-10"
+completed = "2026-06-10"
+refs = [
+    "ADR-0008",
+    "RFC-0001",
+]
+
+[content]
+description = """
+Add an `--inspect` flag to `argsearch-frontier` (sglbench/argsearch/objective.py) that
+renders a read-only inspection view of the Pareto frontier, surfacing decode-perf numbers
+for accuracy-gate-FAILING and accuracy-unmeasured configs. Per [[ADR-0008]]: builds the
+frontier as if no gate were defined, annotates each row with its true gate status
+(PASS/FAIL/n-a + accuracy value), prints an INSPECTION-VIEW banner, and refuses --out so a
+degraded config can never enter the canonical acceptable-results artifact
+([[RFC-0001:C-QUALITY-GATE]]). Default (gated) behavior is unchanged."""
+
+[[content.acceptance_criteria]]
+text = "--inspect ranks gate-failing and accuracy-unmeasured configs under the SLO/Pareto semantics of C-OBJECTIVE"
+status = "done"
+category = "added"
+
+[[content.acceptance_criteria]]
+text = "each --inspect row is annotated with its true gate status (PASS/FAIL/n-a) and the gate metric value"
+status = "done"
+category = "added"
+
+[[content.acceptance_criteria]]
+text = "--inspect prints a banner stating it is an inspection view and NOT acceptable results, citing C-QUALITY-GATE"
+status = "done"
+category = "added"
+
+[[content.acceptance_criteria]]
+text = "--inspect refuses --out (mutually exclusive); canonical frontier artifact never receives gate-failing configs"
+status = "done"
+category = "added"
+
+[[content.acceptance_criteria]]
+text = "default behavior without --inspect is unchanged (gate enforced, only passing configs ranked/written)"
+status = "done"
+category = "added"
+
+[[content.acceptance_criteria]]
+text = "unit tests cover inspect ranking, per-row gate annotation, and the --out refusal"
+status = "done"
+category = "chore"
+
+[[content.acceptance_criteria]]
+text = "govctl check passes"
+status = "done"
+category = "chore"

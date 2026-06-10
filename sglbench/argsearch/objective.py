@@ -161,6 +161,23 @@ def gate_failed_pins(
     return offenders
 
 
+def gate_status(entry: FrontierEntry, gate: QualityGate | None) -> tuple[str, float | None]:
+    """Inspection-view gate verdict for a ranked entry ([[RFC-0001:C-QUALITY-GATE]]).
+
+    Returns ("PASS" | "FAIL" | "n-a", score). Unlike the eligibility check, an entry whose
+    accuracy was never measured is reported as `n-a` rather than folded into `FAIL`, so the
+    speed-versus-quality trade-off stays legible for a human override decision.
+    """
+    if gate is None:
+        return "n-a", None
+    score = (entry.accuracy or {}).get(gate.metric)
+    if isinstance(entry.quality_pass, bool):
+        return ("PASS" if entry.quality_pass else "FAIL"), score
+    if score is None:
+        return "n-a", None
+    return ("PASS" if gate.passes(score) else "FAIL"), score
+
+
 def write_frontier(frontier: list[FrontierEntry], out_path) -> Path:
     path = Path(out_path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -178,9 +195,23 @@ def main(argv=None) -> int:
     p.add_argument("--results", default=DEFAULT_RESULTS, help="Measured results JSONL")
     p.add_argument("--branch", default=None, help="Restrict to one precision branch")
     p.add_argument("--stat", choices=["median", "mean"], default="median")
-    p.add_argument("--out", default=DEFAULT_FRONTIER, help="Frontier output JSONL")
+    p.add_argument("--out", default=None, help=f"Frontier output JSONL (default: {DEFAULT_FRONTIER})")
     p.add_argument("--no-save", action="store_true", help="Print only; do not write --out")
+    p.add_argument(
+        "--inspect",
+        action="store_true",
+        help="Read-only inspection view: rank gate-failing/unmeasured configs too, annotate "
+        "each row with its gate status, and refuse --out (never acceptable results).",
+    )
     a = p.parse_args(argv)
+
+    if a.inspect and a.out is not None:
+        p.error(
+            "--inspect and --out are mutually exclusive; the inspection view includes "
+            "gate-failing configs and is never written to the acceptable-results artifact "
+            "(C-QUALITY-GATE). Redirect stdout to persist it."
+        )
+    out_path = a.out if a.out is not None else DEFAULT_FRONTIER
 
     cfg = load_config(a.config)
     if cfg.slo is None:
@@ -188,7 +219,10 @@ def main(argv=None) -> int:
 
     gate = cfg.quality_gate
     records = load_results(a.results)
-    passing, frontier = build_frontier(records, cfg.slo, branch=a.branch, stat=a.stat, gate=gate)
+    effective_gate = None if a.inspect else gate
+    passing, frontier = build_frontier(
+        records, cfg.slo, branch=a.branch, stat=a.stat, gate=effective_gate
+    )
 
     in_scope = [r for r in records if a.branch is None or r.get("branch") == a.branch]
     slo_only = [r for r in in_scope if passes_slo(r, cfg.slo, a.stat)]
@@ -205,18 +239,38 @@ def main(argv=None) -> int:
     else:
         bound = "min" if gate.direction == "higher" else "max"
         print(f"quality gate: {gate.metric} on {gate.dataset} ({bound} {gate.threshold})")
-    print(
-        f"records={len(records)}  slo_passing={len(slo_only)}  "
-        f"quality_excluded={len(quality_excluded)}  eligible={len(passing)}  frontier={len(frontier)}"
-    )
+
+    if a.inspect:
+        print(
+            "!! INSPECTION VIEW — includes gate-FAILING / unmeasured configs; "
+            "NOT acceptable results (RFC-0001:C-QUALITY-GATE)"
+        )
+        print(
+            f"records={len(records)}  slo_passing={len(slo_only)}  "
+            f"eligible(ignoring gate)={len(passing)}  frontier={len(frontier)}"
+        )
+    else:
+        print(
+            f"records={len(records)}  slo_passing={len(slo_only)}  "
+            f"quality_excluded={len(quality_excluded)}  eligible={len(passing)}  frontier={len(frontier)}"
+        )
+
     for rank, e in enumerate(frontier, 1):
         wl = e.workload
         ttft = "n/a" if e.ttft_ms is None else f"{e.ttft_ms:.0f}ms"
-        print(
+        line = (
             f"{rank:>2}. {e.config_hash} {e.branch}/{e.label}  "
             f"isl{wl.get('isl')}-osl{wl.get('osl')}-c{wl.get('concurrency')} L={e.context_length}  "
             f"decode={e.throughput:.1f}tok/s  ptok={e.per_token_ms:.1f}ms  ttft~{ttft}"
         )
+        if a.inspect:
+            status, score = gate_status(e, gate)
+            score_s = "n/a" if score is None else f"{score}"
+            line += f"  gate={status}({gate.metric if gate else 'accuracy'}={score_s})"
+        print(line)
+
+    if a.inspect:
+        return 0
 
     if quality_excluded:
         print(f"\nquality-excluded (SLO-passing but below the accuracy gate; recorded, not eligible):")
@@ -238,7 +292,7 @@ def main(argv=None) -> int:
             print(f"branch {bn}: no acceptable configuration (C-QUALITY-GATE)")
 
     if not a.no_save:
-        out = write_frontier(frontier, a.out)
+        out = write_frontier(frontier, out_path)
         print(f"wrote frontier to {out}")
     return 0
 
