@@ -15,6 +15,7 @@ from .driver import run_search, workload_points, write_results
 from .generate import accuracy_invariant_search, generate_grid, generate_ofat, load_config
 from .objective import build_frontier
 from .sglang_adapter import (
+    BenchServingClient,
     GSM8KEvaluator,
     SGLangServerManager,
     build_bench_cmd,
@@ -59,6 +60,9 @@ def main(argv=None) -> int:
     p.add_argument("--model", default=None, help="Model path (default: branch.checkpoint or cfg.model)")
     p.add_argument("--host", default="127.0.0.1")
     p.add_argument("--port", type=int, default=30000)
+    p.add_argument("--transport", choices=["one-batch", "serving"], default="one-batch",
+                   help="Bench transport")
+    p.add_argument("--serving-num-prompts", type=int, default=0, help="Prompts for serving transport (0=auto)")
     p.add_argument("--repeats", type=int, default=2, help="Measured repeats per workload point (>=2)")
     p.add_argument("--gsm8k-examples", type=int, default=0, help="Run gsm8k accuracy gate per config with N examples (0=disabled)")
     p.add_argument("--gsm8k-threads", type=int, default=32, help="Concurrent threads for the gsm8k eval")
@@ -88,7 +92,14 @@ def main(argv=None) -> int:
                 print(" ".join(build_bench_cmd(base_url, wp, f"{a.out}/{cp.config_hash}-{wp.label}.jsonl")))
         return 0
 
-    manager = SGLangServerManager(model, host=a.host, port=a.port, launch_timeout_s=a.launch_timeout)
+    bench_factory = None
+    if a.transport == "serving":
+        nump = a.serving_num_prompts or None
+        bench_factory = lambda url: BenchServingClient(url, tokenizer=model, num_prompts=nump)
+    manager = SGLangServerManager(
+        model, host=a.host, port=a.port, launch_timeout_s=a.launch_timeout,
+        bench_client_factory=bench_factory,
+    )
 
     gate = None
     evaluate = None

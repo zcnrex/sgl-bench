@@ -8,14 +8,17 @@ from sglbench.argsearch.driver import ServerManager, ServerSession
 from sglbench.argsearch.measure import BenchClient, WorkloadPoint, measure_point
 from sglbench.argsearch.sglang_adapter import (
     BenchOneBatchClient,
+    BenchServingClient,
     GSM8KEvaluator,
     SGLangServerManager,
     SGLangSession,
     build_bench_cmd,
     build_gsm8k_cmd,
     build_launch_cmd,
+    build_serving_cmd,
     parse_gsm8k_metrics,
     parse_result_jsonl,
+    parse_serving_metrics,
     record_to_metrics,
     wait_until_ready,
 )
@@ -263,6 +266,82 @@ class GSM8KEvaluatorTest(unittest.TestCase):
         result = ev.evaluate()
         self.assertEqual(result, {"accuracy": 0.97})
         self.assertEqual(captured["cmd"][captured["cmd"].index("--num-examples") + 1], "20")
+
+
+class ServingCmdTest(unittest.TestCase):
+    def test_maps_workload_and_tokenizer(self):
+        cmd = build_serving_cmd(
+            "http://127.0.0.1:40000", WorkloadPoint(8192, 256, 32), "/tmp/s.jsonl",
+            tokenizer="nvidia/X", num_prompts=64,
+        )
+        self.assertIn("sglang.bench_serving", cmd)
+        self.assertEqual(cmd[cmd.index("--max-concurrency") + 1], "32")
+        self.assertEqual(cmd[cmd.index("--random-input-len") + 1], "8192")
+        self.assertEqual(cmd[cmd.index("--random-output-len") + 1], "256")
+        self.assertEqual(cmd[cmd.index("--num-prompts") + 1], "64")
+        self.assertEqual(cmd[cmd.index("--tokenizer") + 1], "nvidia/X")
+        self.assertEqual(cmd[cmd.index("--random-range-ratio") + 1], "1.0")
+
+    def test_num_prompts_auto_scales_with_concurrency(self):
+        cmd = build_serving_cmd("u", WorkloadPoint(8192, 256, 32), "/tmp/s.jsonl")
+        self.assertEqual(cmd[cmd.index("--num-prompts") + 1], "96")
+
+
+class ServingParseTest(unittest.TestCase):
+    def test_decode_throughput_from_itl_not_blended(self):
+        rec = json.dumps({
+            "median_itl_ms": 9.0, "p95_itl_ms": 12.0, "median_ttft_ms": 430.0,
+            "output_throughput": 3000.0,
+        })
+        m = parse_serving_metrics(rec, WorkloadPoint(8192, 256, 32))
+        self.assertAlmostEqual(m[M.PER_TOKEN_MS], 9.0)
+        self.assertAlmostEqual(m[M.PER_TOKEN_P95_MS], 12.0)
+        self.assertAlmostEqual(m[M.TTFT_MS], 430.0)
+        self.assertAlmostEqual(m[M.DECODE_THROUGHPUT], 32000.0 / 9.0, places=3)
+        self.assertNotAlmostEqual(m[M.DECODE_THROUGHPUT], 3000.0, places=1)
+        self.assertAlmostEqual(m[M.OUTPUT_THROUGHPUT], 3000.0)
+
+    def test_picks_last_jsonl_line(self):
+        text = "\n".join([
+            json.dumps({"median_itl_ms": 99.0}),
+            json.dumps({"median_itl_ms": 10.0, "median_ttft_ms": 400.0}),
+        ])
+        m = parse_serving_metrics(text, WorkloadPoint(8192, 256, 1))
+        self.assertAlmostEqual(m[M.PER_TOKEN_MS], 10.0)
+
+    def test_empty_raises(self):
+        with self.assertRaises(ValueError):
+            parse_serving_metrics("\n", WorkloadPoint(8192, 256, 1))
+
+
+class ServingClientTest(unittest.TestCase):
+    def test_satisfies_bench_client_and_measures(self):
+        def fake_run(cmd, out_path):
+            line = json.dumps({"median_itl_ms": 9.0, "median_ttft_ms": 430.0,
+                               "p95_itl_ms": 11.0, "output_throughput": 3000.0})
+            with open(out_path, "w") as f:
+                f.write(line + "\n")
+            return line + "\n"
+
+        client = BenchServingClient("http://h:1", tokenizer="t", run_bench=fake_run)
+        self.assertIsInstance(client, BenchClient)
+        m = client.measure(WorkloadPoint(8192, 256, 8))
+        self.assertAlmostEqual(m[M.DECODE_THROUGHPUT], 8000.0 / 9.0, places=3)
+
+    def test_manager_uses_client_factory(self):
+        made = {}
+
+        def factory(url):
+            made["url"] = url
+            return BenchServingClient(url, run_bench=lambda c, o: "")
+
+        mgr = SGLangServerManager(
+            "m", probe=lambda: True, popen=lambda cmd: object(),
+            bench_client_factory=factory,
+        )
+        session = mgr.launch({})
+        self.assertIsInstance(session.client, BenchServingClient)
+        self.assertEqual(made["url"], mgr.base_url)
 
 
 if __name__ == "__main__":

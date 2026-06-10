@@ -1,0 +1,39 @@
+#:schema ../schema/work.schema.json
+
+[govctl]
+id = "WI-2026-06-09-014"
+title = "BenchServingClient: bench_serving transport for percentile-ITL frontier, reconciled vs bench_one_batch_server"
+status = "done"
+created = "2026-06-09"
+started = "2026-06-09"
+completed = "2026-06-09"
+refs = ["RFC-0001"]
+
+[content]
+description = "Add BenchServingClient (BenchClient protocol) wrapping sglang.bench_serving as a richer frontier transport: drives N requests at a target concurrency and reports TTFT/ITL percentiles. Per C-OBJECTIVE, map decode per-token latency from ITL (median/p95_itl_ms) and derive steady-state decode throughput from ITL (concurrency*1000/median_itl_ms), NOT the blended output_throughput. Selectable in argsearch-run via --transport. Reconcile TTFT vs bench_one_batch_server on the B300 before relying on it (C-BASELINE-ANCHOR)."
+notes = ["bench_serving needs --random-range-ratio 1.0 to fix input length to isl (C-OBJECTIVE comparability); decode/ITL reconcile to ~0.1% vs bench_one_batch_server, TTFT to ~8% (report-only)."]
+
+[[content.acceptance_criteria]]
+text = "govctl check passes"
+status = "done"
+category = "chore"
+
+[[content.acceptance_criteria]]
+text = "BenchServingClient + build_serving_cmd + parse_serving_metrics (pure); decode throughput from ITL, per-token from ITL percentiles, TTFT report-only"
+status = "done"
+category = "added"
+
+[[content.acceptance_criteria]]
+text = "argsearch-run --transport {one-batch,serving} selects the bench transport"
+status = "done"
+category = "added"
+
+[[content.acceptance_criteria]]
+text = "GPU-free tests cover serving command construction and metrics mapping (ITL-derived decode rate, not blended output throughput)"
+status = "done"
+category = "chore"
+
+[[content.acceptance_criteria]]
+text = "TTFT reconciled vs bench_one_batch_server on the B300 within tolerance (C-BASELINE-ANCHOR)"
+status = "done"
+category = "chore"

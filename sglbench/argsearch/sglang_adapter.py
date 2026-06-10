@@ -251,6 +251,7 @@ class SGLangServerManager:
         extra_launch_args=(),
         bench_model: str = BASE_URL_MODEL,
         bench_extra_args=(),
+        bench_client_factory: Callable[[str], BenchClient] | None = None,
         popen: Callable[[list[str]], object] = None,
         probe: Callable[[], bool] | None = None,
         run_bench: Callable[[list[str], str], str] = _default_run_bench,
@@ -265,6 +266,7 @@ class SGLangServerManager:
         self.extra_launch_args = tuple(extra_launch_args)
         self.bench_model = bench_model
         self.bench_extra_args = tuple(bench_extra_args)
+        self._bench_client_factory = bench_client_factory
         self._popen = popen
         self._probe = probe
         self._run_bench = run_bench
@@ -297,12 +299,15 @@ class SGLangServerManager:
         except TimeoutError:
             _terminate(proc)
             raise
-        client = BenchOneBatchClient(
-            self.base_url,
-            self.bench_model,
-            extra_args=self.bench_extra_args,
-            run_bench=self._run_bench,
-        )
+        if self._bench_client_factory is not None:
+            client = self._bench_client_factory(self.base_url)
+        else:
+            client = BenchOneBatchClient(
+                self.base_url,
+                self.bench_model,
+                extra_args=self.bench_extra_args,
+                run_bench=self._run_bench,
+            )
         return SGLangSession(proc, client)
 
 
@@ -420,3 +425,119 @@ class GSM8KEvaluator:
         finally:
             if tmp is not None:
                 tmp.cleanup()
+
+
+SERVING_DEFAULT_BACKEND = "sglang"
+
+
+def build_serving_cmd(
+    base_url: str,
+    point: WorkloadPoint,
+    output_file: str,
+    *,
+    backend: str = SERVING_DEFAULT_BACKEND,
+    dataset: str = "random",
+    num_prompts: int | None = None,
+    request_rate="inf",
+    range_ratio: float = 1.0,
+    tokenizer: str | None = None,
+    extra=(),
+) -> list[str]:
+    """`bench_serving` command for one workload point ([[RFC-0001:C-OBJECTIVE]] transport).
+
+    Concurrency maps to --max-concurrency; isl/osl to --random-input/output-len; range_ratio
+    1.0 fixes sampled lengths to exactly isl/osl. num_prompts defaults to a few multiples of
+    concurrency.
+    """
+    n = num_prompts if num_prompts is not None else max(point.concurrency * 3, 8)
+    cmd = [
+        "python", "-m", "sglang.bench_serving",
+        "--backend", backend,
+        "--base-url", base_url,
+        "--dataset-name", dataset,
+        "--random-input-len", str(point.isl),
+        "--random-output-len", str(point.osl),
+        "--random-range-ratio", str(range_ratio),
+        "--num-prompts", str(n),
+        "--max-concurrency", str(point.concurrency),
+        "--request-rate", str(request_rate),
+        "--output-file", output_file,
+    ]
+    if tokenizer is not None:
+        cmd += ["--tokenizer", tokenizer]
+    cmd += list(extra)
+    return cmd
+
+
+def parse_serving_metrics(text: str, point: WorkloadPoint) -> dict[str, float]:
+    """Map a `bench_serving` result line into the canonical metric vocabulary.
+
+    Decode per-token latency is the inter-token latency (ITL); steady-state decode
+    throughput is derived from ITL (concurrency / ITL), not the OSL-blended
+    output_throughput, per [[RFC-0001:C-OBJECTIVE]]. TTFT is carried report-only.
+    """
+    lines = [ln for ln in text.splitlines() if ln.strip()]
+    if not lines:
+        raise ValueError("bench_serving produced no result line")
+    rec = json.loads(lines[-1])
+    out: dict[str, float] = {}
+    itl = rec.get("median_itl_ms")
+    if itl is not None and float(itl) > 0:
+        out[M.PER_TOKEN_MS] = float(itl)
+        out[M.DECODE_THROUGHPUT] = float(point.concurrency) * 1000.0 / float(itl)
+    if rec.get("p95_itl_ms") is not None:
+        out[M.PER_TOKEN_P95_MS] = float(rec["p95_itl_ms"])
+    if rec.get("median_ttft_ms") is not None:
+        out[M.TTFT_MS] = float(rec["median_ttft_ms"])
+    if rec.get("output_throughput") is not None:
+        out[M.OUTPUT_THROUGHPUT] = float(rec["output_throughput"])
+    return out
+
+
+class BenchServingClient:
+    """BenchClient over `sglang.bench_serving` — percentile-ITL frontier transport.
+
+    A richer alternative to BenchOneBatchClient; reconcile against it before relying on its
+    numbers ([[RFC-0001:C-BASELINE-ANCHOR]]).
+    """
+
+    tool = "bench_serving"
+
+    def __init__(
+        self,
+        base_url: str,
+        *,
+        backend: str = SERVING_DEFAULT_BACKEND,
+        tokenizer: str | None = None,
+        num_prompts: int | None = None,
+        request_rate="inf",
+        dataset: str = "random",
+        extra_args=(),
+        run_bench: Callable[[list[str], str], str] = _default_run_bench,
+    ) -> None:
+        self.base_url = base_url
+        self.backend = backend
+        self.tokenizer = tokenizer
+        self.num_prompts = num_prompts
+        self.request_rate = request_rate
+        self.dataset = dataset
+        self.extra_args = tuple(extra_args)
+        self._run_bench = run_bench
+
+    def _run(self, point: WorkloadPoint) -> dict[str, float]:
+        with tempfile.TemporaryDirectory() as d:
+            out = os.path.join(d, "serving.jsonl")
+            cmd = build_serving_cmd(
+                self.base_url, point, out,
+                backend=self.backend, dataset=self.dataset,
+                num_prompts=self.num_prompts, request_rate=self.request_rate,
+                tokenizer=self.tokenizer, extra=self.extra_args,
+            )
+            text = self._run_bench(cmd, out)
+            return parse_serving_metrics(text, point)
+
+    def warmup(self, point: WorkloadPoint) -> None:
+        self._run(point)
+
+    def measure(self, point: WorkloadPoint) -> dict[str, float]:
+        return self._run(point)

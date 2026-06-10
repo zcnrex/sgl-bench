@@ -87,11 +87,16 @@ over the OSL-averaged `output_throughput`. TTFT/per-token selection prefer perce
 > **Measurement caveats (reconcile on a live server, RFC-0001:C-BASELINE-ANCHOR).**
 > `bench_one_batch_server` exposes the single tail decode step (`last_gen_throughput`), not a
 > multi-step window — the C-OBJECTIVE window requirement is recorded as `decode_window_steps`
-> and the ≥2 repeats provide cross-run smoothing; a true window needs a richer transport
-> (genai-bench). Likewise its `last_ttft` is a single sample, not a p95, so the (report-only)
-> TTFT is approximate. For short-output *iter* workloads at long prefill, every decode step
-> sits at ~constant `L`, so the tail rate is a clean steady-state estimate; long-output *report*
-> workloads cross many context lengths and only their tail reflects decode at the longest `L`.
+> and the ≥2 repeats provide cross-run smoothing; a true window needs a richer transport.
+> `argsearch-run --transport serving` provides one: `bench_serving` drives many requests at a
+> target concurrency and reports ITL percentiles, from which the decode rate is derived
+> (`concurrency / median_itl`) — not its blended `output_throughput`. It reconciles against the
+> `bench_one_batch_server` anchor (decode within ~0.1%, TTFT within ~8%) at fixed input length
+> (`range_ratio=1.0`). Likewise the anchor's `last_ttft` is a single sample, not a p95, so the
+> (report-only) TTFT is approximate. For short-output *iter* workloads at long prefill, every
+> decode step sits at ~constant `L`, so the tail rate is a clean steady-state estimate;
+> long-output *report* workloads cross many context lengths and only their tail reflects decode
+> at the longest `L`.
 
 ## Library
 
