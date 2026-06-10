@@ -148,6 +148,14 @@ class OnConfigStreamTest(unittest.TestCase):
         self.assertEqual([h for h, _ in seen], [cp.config_hash for cp in POINTS])
 
 
+class OnResultStreamTest(unittest.TestCase):
+    def test_on_result_fires_per_workload_point(self):
+        mgr = FakeManager()
+        seen = []
+        run_search(POINTS, workload_points(AXES), mgr, on_result=lambda r: seen.append(r.label))
+        self.assertEqual(len(seen), len(POINTS) * 6)
+
+
 class EvaluateHashesTest(unittest.TestCase):
     def test_only_designated_configs_evaluated_rest_reuse(self):
         mgr = FakeManager()

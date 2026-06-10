@@ -132,20 +132,19 @@ def main(argv=None) -> int:
     out_path = out_dir / "results.jsonl"
     written = 0
     with out_path.open("w") as rf:
-        def sink(cp, recs):
+        def sink(res):
             nonlocal written
-            for r in recs:
-                rf.write(result_line(r) + "\n")
+            rf.write(result_line(res) + "\n")
             rf.flush()
-            written += len(recs)
-            print(f"  [{cp.config_hash} {cp.label}] {len(recs)} record(s) -> {out_path}")
+            written += 1
+            print(f"  [{res.config_hash} {res.label}] -> {out_path} ({written})")
 
         results = run_search(
             points, workload, manager,
             repeats=a.repeats, gate=gate, evaluate=evaluate,
-            evaluate_hashes=evaluate_hashes, on_config=sink,
+            evaluate_hashes=evaluate_hashes, on_result=sink,
         )
-    print(f"wrote {written} records to {out_path} (streamed per config)")
+    print(f"wrote {written} records to {out_path} (streamed per workload point)")
 
     if a.frontier and cfg.slo is not None:
         passing, frontier = build_frontier(

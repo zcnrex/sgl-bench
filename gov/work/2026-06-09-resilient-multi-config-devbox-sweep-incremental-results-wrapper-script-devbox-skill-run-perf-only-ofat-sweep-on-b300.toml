@@ -13,32 +13,32 @@ description = "Make long multi-config sweeps survivable and repeatable, then run
 
 [[content.acceptance_criteria]]
 text = "govctl check passes"
-status = "pending"
+status = "done"
 category = "chore"
 
 [[content.acceptance_criteria]]
 text = "run_search writes results incrementally per config (durable mid-sweep); run CLI streams results.jsonl"
-status = "pending"
+status = "done"
 category = "added"
 
 [[content.acceptance_criteria]]
 text = "bench_serving default num_prompts is >=5x max-concurrency"
-status = "pending"
+status = "done"
 category = "added"
 
 [[content.acceptance_criteria]]
 text = "scripts/devbox_sweep.sh runs sync->launch->detached sweep->poll->teardown resiliently"
-status = "pending"
+status = "done"
 category = "added"
 
 [[content.acceptance_criteria]]
 text = "a Claude skill documents the devbox arg-search run procedure + traps"
-status = "pending"
+status = "done"
 category = "added"
 
 [[content.acceptance_criteria]]
 text = "GPU-free tests cover incremental writes and the num_prompts default"
-status = "pending"
+status = "done"
 category = "chore"
 
 [[content.acceptance_criteria]]

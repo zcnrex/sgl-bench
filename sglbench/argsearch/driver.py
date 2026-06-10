@@ -77,6 +77,7 @@ def run_search(
     evaluate: Callable[[ServerSession], dict[str, float]] | None = None,
     evaluate_hashes: set[str] | None = None,
     on_config: Callable[[ConfigPoint, list[MeasurementResult]], None] | None = None,
+    on_result: Callable[[MeasurementResult], None] | None = None,
 ) -> list[MeasurementResult]:
     """Drive the outer/inner search and return one MeasurementResult per inner point.
 
@@ -112,6 +113,8 @@ def run_search(
                 res.accuracy = accuracy
                 res.quality_pass = quality_pass
                 config_results.append(res)
+                if on_result is not None:
+                    on_result(res)
         finally:
             session.shutdown()
         results.extend(config_results)
