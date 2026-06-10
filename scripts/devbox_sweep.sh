@@ -63,7 +63,8 @@ done
 
 echo "[devbox_sweep] last log lines:"
 ssh -n "$DEVBOX" "tail -25 $LOG" 2>/dev/null || true
-echo "[devbox_sweep] fetch results -> $LOCAL_DIR/out/sweep/"
-mkdir -p "$LOCAL_DIR/out/sweep"
-rsync -az "$DEVBOX:$OUT/" "$LOCAL_DIR/out/sweep/" 2>/dev/null || true
+FETCH_DIR="$LOCAL_DIR/out/$(basename "$OUT")"
+echo "[devbox_sweep] fetch results -> $FETCH_DIR"
+mkdir -p "$FETCH_DIR"
+rsync -az "$DEVBOX:$OUT/" "$FETCH_DIR/" 2>/dev/null || true
 [ "$done" = 1 ] && echo "[devbox_sweep] sweep complete" || echo "[devbox_sweep] poll window ended; sweep may still be running on the devbox (check $LOG)"
