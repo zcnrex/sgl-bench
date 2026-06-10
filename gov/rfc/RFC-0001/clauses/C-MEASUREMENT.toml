@@ -14,8 +14,12 @@ with at least two repeat runs. Each recorded result MUST capture the full reprod
 provenance: the configuration identity (for example a content hash of the config), the
 workload point, the measured metrics, and the execution environment (at minimum the
 SGLang commit, the kernel/library versions, and all cluster networking environment
-variables in effect).
+variables in effect). When an accuracy gate applies ([[RFC-0001:C-QUALITY-GATE]]), the
+recorded result MUST also capture the configuration's accuracy-gate result and its
+pass/fail flag.
 
 **Rationale:** Warmup dominates first-measurement timing on 550B-class models, and a
 single unrepeated measurement is noise; without recorded environment provenance, numbers
-from different runs cannot be compared or reproduced."""
+from different runs cannot be compared or reproduced. Carrying the accuracy-gate result and
+pass/fail flag in the same record keeps the speed-versus-quality trade-off inspectable from
+one stream ([[RFC-0001:C-QUALITY-GATE]])."""

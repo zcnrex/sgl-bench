@@ -17,12 +17,33 @@ results* are the ranked decode-throughput-versus-decode-latency Pareto frontier 
 [[RFC-0001:C-OBJECTIVE]]; the *measurement record stream* is the full set of recorded
 measurements defined by [[RFC-0001:C-MEASUREMENT]].
 
-A configuration that fails the accuracy gate MUST be excluded from eligibility at every
-stage of the search, regardless of its throughput or latency. A value whose OFAT
-configuration failed the gate MUST NOT be used to pin a non-gridded argument
-([[RFC-0001:C-SEARCH-STRATEGY]]). A failing configuration MUST NOT be carried forward as an
-eligible point in the focused grid. A failing configuration MUST NOT appear in the
-acceptable results. If a precision branch has no gate-passing value with which to pin a
+Each candidate argument ([[RFC-0001:C-SCOPE]]) MUST be classified as *accuracy-invariant* —
+its values change performance but not the model's computed outputs (for example scheduling,
+memory-split, or parallelism-layout arguments) — or *accuracy-active* — its values can change
+those computed outputs (for example a compute dtype, a quantization mode, or an attention/SSM
+kernel backend). This classification MUST be recorded so it is inspectable, and an argument
+whose effect on the computed outputs is unknown or unverified MUST be classified
+accuracy-active. Fixed and constrained arguments that are accuracy-active — including the
+precision choice of [[RFC-0001:C-PRECISION-BRANCH]] — are discharged by the per-branch
+baseline validation defined below, not by per-configuration evaluation.
+
+When a search varies any accuracy-active argument, the accuracy gate MUST be evaluated per
+configuration as specified in the rest of this clause. When a search varies only
+accuracy-invariant arguments, per-configuration evaluation MAY be skipped, provided that both
+(a) the branch baseline passes the gate, and (b) a spot-check configuration that sets every
+varied accuracy-invariant argument to an extreme of its range also passes the gate at the
+same threshold. The gate MUST still be evaluated at least once per precision branch (the
+baseline validation of (a)). A search that skips per-configuration evaluation MUST record
+that it did so together with the spot-check configuration and its result.
+
+Among configurations subject to per-configuration evaluation, a configuration that fails the
+accuracy gate MUST be excluded from eligibility at every stage of the search, regardless of
+its throughput or latency. A value whose OFAT configuration failed the gate MUST NOT be used
+to pin a non-gridded argument ([[RFC-0001:C-SEARCH-STRATEGY]]); an accuracy-invariant
+argument pinned without a per-configuration gate result is permitted, because the baseline
+validation and spot-check stand in for the gate. A failing configuration MUST NOT be carried
+forward as an eligible point in the focused grid. A failing configuration MUST NOT appear in
+the acceptable results. If a precision branch has no gate-passing value with which to pin a
 required non-gridded argument, or if no configuration in the branch passes the gate, the
 search MUST report that branch as having no acceptable configuration rather than emitting a
 degraded one.
@@ -42,4 +63,10 @@ as NVFP4 versus FP8. Fixing the threshold up front (as with the SLO in
 failures at every search stage — not only the final ranking — stops a quality-degraded value
 from steering OFAT pinning or grid admission. Recording and flagging the failure in the
 measurement record stream rather than discarding it preserves the measured trade-off for a
-human to judge, while keeping the acceptable results free of degraded configurations."""
+human to judge, while keeping the acceptable results free of degraded configurations. Most
+serving arguments — batching, memory split, parallelism layout — are numerically neutral, so
+re-evaluating accuracy for every such permutation spends eval budget without new information;
+classifying arguments lets the expensive gate target only configurations that can actually
+move quality. The recorded classification, the baseline validation, and an extreme-value
+spot-check keep the skip auditable, and defaulting unknown arguments to accuracy-active fails
+safe."""
