@@ -7,7 +7,7 @@
 # checkpoint is seeded; precision is a branch, not a candidate axis
 # ([[RFC-0001:C-PRECISION-BRANCH]]).
 
-model: nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-BF16
+model: nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-NVFP4
 
 workload_axes:
   # Workload cost-role staging ([[RFC-0001:C-WORKLOAD-STAGING]]).
