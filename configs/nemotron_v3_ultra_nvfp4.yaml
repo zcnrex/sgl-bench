@@ -1,11 +1,13 @@
-# Versioned source of truth for the Nemotron-3-Ultra-550B server-arg search.
+# Versioned source of truth for the Nemotron-3-Ultra-550B NVFP4 server-arg search.
 # Implements [[RFC-0001:C-CONFIG-SOURCE]]. Seeded from prior perf logs
 # (2026-06-05/07/08 Nemotron-v3). Restart-required server args only; workload
 # axes below are the inner loop ([[RFC-0001:C-LOOP-STRUCTURE]]) and are not permuted.
 #
-# Add an `fp8` precision branch as a sibling under precision_branches when that
-# checkpoint is seeded; precision is a branch, not a candidate axis
-# ([[RFC-0001:C-PRECISION-BRANCH]]).
+# `model` is the served checkpoint and carries the weight precision (NVFP4): a different
+# weight precision (e.g. FP8) is a different checkpoint and gets its own config file, not
+# a branch here. A branch is a partition WITHIN this checkpoint, keyed by its hardware
+# target and KV-cache precision ([[RFC-0001:C-BRANCH]]). Add a sibling branch under
+# `branches` for a different hardware target or KV-cache precision on this same checkpoint.
 
 model: nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-NVFP4
 
@@ -41,23 +43,26 @@ slo:
     - {isl: 64000, osl: 1024, per_token_ms: 80}
 
 # Accuracy acceptance gate ([[RFC-0001:C-QUALITY-GATE]]). Defined before the search and
-# evaluated per precision branch; a config below the threshold is excluded from the
-# acceptable results but still recorded and flagged for trade-off inspection.
+# evaluated per branch. The gate is within-branch and baseline-relative: a config passes only
+# if its metric is no more than `tolerance` below its OWN branch baseline (the baseline-label
+# config's measured accuracy). A failing config is excluded from the acceptable results but
+# still recorded and flagged for trade-off inspection.
 #
-# gsm8k is the fast first-layer gate run on every config during the search (a healthy
-# config sits >95%). The expensive gpqa_diamond eval (~2h) is reserved for final
-# characterization of the chosen config(s), not the search loop. PHASE-0 SEED threshold —
-# set to the real quality bar before relying on the gate.
+# gsm8k is the fast first-layer gate run on every config during the search. The expensive
+# gpqa_diamond eval (~2h) is reserved for final characterization of the chosen config(s), not
+# the search loop. PHASE-0 SEED tolerance — set to the real quality bar before relying on it.
 quality_gate:
   dataset: gsm8k
   metric: accuracy
-  threshold: 0.95
+  tolerance: 0.02
   direction: higher
 
-precision_branches:
-  - name: nvfp4
-    checkpoint: nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-NVFP4
+# Branches within this checkpoint ([[RFC-0001:C-BRANCH]]). Each is keyed by its hardware
+# target and KV-cache precision; both are recorded in the measurement identity.
+branches:
+  - name: b200-fp8kv
     hardware: 4xB200 single-node TP4
+    kv_cache_precision: fp8_e4m3
 
     # Known-best, never varied.
     fixed:

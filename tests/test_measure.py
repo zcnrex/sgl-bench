@@ -94,6 +94,22 @@ class MeasureTest(unittest.TestCase):
         self.assertIn("throughput", rec["metrics"])
         self.assertEqual(rec["environment"], env)
 
+    def test_records_branch_keys_and_config_label(self):
+        client = FakeClient([{"throughput": 1.0}, {"throughput": 2.0}])
+        res = measure_point(
+            client, config_hash="h", branch="b200-fp8kv", point=POINT, environment={},
+            branch_keys={"hardware": "4xB200", "kv_cache_precision": "fp8_e4m3"},
+            config_label="baseline",
+        )
+        rec = res.to_record()
+        self.assertEqual(rec["branch_keys"], {"hardware": "4xB200", "kv_cache_precision": "fp8_e4m3"})
+        self.assertEqual(rec["config_label"], "baseline")
+
+    def test_capture_environment_records_hardware_target(self):
+        env = capture_environment(sglang_commit="c", environ={"SGLBENCH_HARDWARE": "4xB200 TP4"})
+        self.assertEqual(env["hardware"]["accelerator"], "4xB200 TP4")
+        self.assertIn("device_count", env["hardware"])
+
     def test_capture_environment_collects_network_vars(self):
         environ = {
             "NCCL_DEBUG": "INFO",

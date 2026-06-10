@@ -3,8 +3,9 @@
 Implements [[RFC-0001:C-MEASUREMENT]]: every measured configuration is warmed up
 before any recorded timing, measured with at least two repeat runs, and recorded with
 full reproducibility provenance -- config identity (content hash), the workload point,
-the measured metrics, and the execution environment (SGLang commit, library versions,
-and the cluster networking environment variables in effect).
+the measured metrics, and the execution environment (the hardware target -- accelerator
+model and device count -- the SGLang commit, library versions, and the cluster
+networking environment variables in effect).
 
 The actual benchmark transport (genai-bench / bench_one_batch_server against a live
 server) is abstracted behind the BenchClient protocol so this logic is exercised
@@ -69,6 +70,8 @@ NETWORK_ENV_NAMES = (
 
 NETWORK_ENV_EXTRA_VAR = "SGLBENCH_NET_ENV_EXTRA"
 
+HARDWARE_ENV_VAR = "SGLBENCH_HARDWARE"
+
 
 @dataclass(frozen=True)
 class WorkloadPoint:
@@ -119,6 +122,8 @@ class MeasurementResult:
     metrics: dict  # per-metric {mean, median, n} aggregates across repeats
     repeats: list[dict]  # raw per-repeat metrics
     environment: dict
+    config_label: str = ""
+    branch_keys: dict | None = None
     bench_tool: str | None = None
     accuracy: dict | None = None
     quality_pass: bool | None = None
@@ -164,11 +169,35 @@ def _network_env(environ: dict | None = None) -> dict[str, str]:
     }
 
 
+def _detect_hardware(environ: dict | None = None) -> dict:
+    """Hardware-target branch key for the execution environment: accelerator model and
+    device count ([[RFC-0001:C-MEASUREMENT]], [[RFC-0001:C-BRANCH]]).
+
+    Prefers the explicit SGLBENCH_HARDWARE override (a free-form accelerator label), then
+    a live CUDA query; either is absent on a GPU-free host and recorded as None.
+    """
+    env = os.environ if environ is None else environ
+    label = env.get(HARDWARE_ENV_VAR)
+    accelerator: str | None = label or None
+    device_count: int | None = None
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            device_count = torch.cuda.device_count()
+            if accelerator is None and device_count:
+                accelerator = torch.cuda.get_device_name(0)
+    except Exception:
+        pass
+    return {"accelerator": accelerator, "device_count": device_count}
+
+
 def capture_environment(
     sglang_commit: str | None = None, environ: dict | None = None
 ) -> dict:
     """Reproducibility provenance for the execution environment ([[RFC-0001:C-MEASUREMENT]])."""
     return {
+        "hardware": _detect_hardware(environ),
         "sglang_commit": sglang_commit or _detect_sglang_commit(),
         "library_versions": _library_versions(),
         "network_env": _network_env(environ),
@@ -219,6 +248,8 @@ def measure_point(
     point: WorkloadPoint,
     repeats: int = MIN_REPEATS,
     environment: dict | None = None,
+    branch_keys: dict | None = None,
+    config_label: str = "",
 ) -> MeasurementResult:
     """Warm up, run `repeats` recorded passes, and build a provenance record.
 
@@ -242,5 +273,7 @@ def measure_point(
         metrics=_aggregate(runs),
         repeats=runs,
         environment=env,
+        config_label=config_label,
+        branch_keys=branch_keys,
         bench_tool=_bench_tool(client),
     )

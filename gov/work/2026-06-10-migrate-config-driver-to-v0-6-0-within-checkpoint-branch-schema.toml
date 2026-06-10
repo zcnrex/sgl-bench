@@ -1,0 +1,51 @@
+#:schema ../schema/work.schema.json
+
+[govctl]
+id = "WI-2026-06-10-004"
+title = "Migrate config + driver to v0.6.0 within-checkpoint Branch schema"
+status = "done"
+created = "2026-06-10"
+started = "2026-06-10"
+completed = "2026-06-10"
+refs = [
+    "RFC-0001",
+    "RFC-0001:C-BRANCH",
+    "RFC-0001:C-QUALITY-GATE",
+    "RFC-0001:C-OBJECTIVE",
+    "RFC-0001:C-MEASUREMENT",
+    "ADR-0009",
+    "ADR-0010",
+]
+
+[content]
+description = "Bring the argsearch config + driver into line with RFC-0001 v0.6.0. The branch is now strictly within one checkpoint: weight precision defines the model/checkpoint (cfg.model), and a branch is keyed by runtime/hardware attributes (hardware target + KV-cache precision). Rename PrecisionBranch->Branch and precision_branches->branches; drop the per-branch checkpoint; make hardware + kv_cache_precision recorded branch keys; fold the hardware target into the execution environment; make the accuracy gate within-branch and baseline-relative (one-sided); build the Pareto frontier within a single branch (never cross-branch)."
+
+[[content.acceptance_criteria]]
+text = "schema renames PrecisionBranch->Branch and SearchConfig.precision_branches->branches; weight precision is model-level (no per-branch checkpoint); hardware + kv_cache_precision are recorded branch keys"
+status = "done"
+category = "added"
+
+[[content.acceptance_criteria]]
+text = "accuracy gate is within-branch and baseline-relative — a config passes iff its metric is no more than a fixed tolerance below its own branch baseline (C-QUALITY-GATE)"
+status = "done"
+category = "added"
+
+[[content.acceptance_criteria]]
+text = "Pareto frontier is constructed within a single branch; cross-branch configs are never co-ranked (C-OBJECTIVE)"
+status = "done"
+category = "added"
+
+[[content.acceptance_criteria]]
+text = "execution environment records the hardware target (accelerator model + device count) (C-MEASUREMENT/C-RUN-OUTPUT)"
+status = "done"
+category = "added"
+
+[[content.acceptance_criteria]]
+text = "configs/nemotron_v3_ultra_nvfp4.yaml uses the new branches schema with hardware + kv-cache-precision branch keys; comments cite C-BRANCH not the superseded C-PRECISION-BRANCH"
+status = "done"
+category = "added"
+
+[[content.acceptance_criteria]]
+text = "full pytest suite passes and govctl check passes"
+status = "done"
+category = "chore"

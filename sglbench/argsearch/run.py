@@ -3,7 +3,8 @@
 Wires the generator, the concrete SGLang adapter, and the driver: generate
 restart-required configs ([[RFC-0001:C-CONFIG-SOURCE]]), launch each against the server and
 sweep the workload axes ([[RFC-0001:C-LOOP-STRUCTURE]]), and write provenance records
-([[RFC-0001:C-MEASUREMENT]]). This is the perf path; accuracy gating is out of scope here.
+([[RFC-0001:C-MEASUREMENT]]). When `--gsm8k-examples` is set it also wires the per-branch,
+baseline-relative accuracy gate ([[RFC-0001:C-QUALITY-GATE]]).
 """
 
 from __future__ import annotations
@@ -87,7 +88,7 @@ def main(argv=None) -> int:
     p.add_argument("--concurrency", type=int, nargs="+", default=None, help="Override workload concurrency list")
     p.add_argument("--isl-osl", nargs="+", default=None, help="Override workload pairs as ISLxOSL")
     p.add_argument("--limit-workload", type=int, default=0, help="Run only the first N workload points (0=all)")
-    p.add_argument("--model", default=None, help="Model path (default: branch.checkpoint or cfg.model)")
+    p.add_argument("--model", default=None, help="Served model checkpoint (default: cfg.model)")
     p.add_argument("--host", default="127.0.0.1")
     p.add_argument("--port", type=int, default=30000)
     p.add_argument("--transport", choices=["one-batch", "serving"], default="one-batch",
@@ -105,7 +106,7 @@ def main(argv=None) -> int:
 
     cfg = load_config(a.config)
     branch = cfg.branch(a.branch)
-    model = a.model or branch.checkpoint or cfg.model
+    model = a.model or cfg.model
     points = select_points(branch, a.mode, a.limit_configs, a.only_config)
     if not points:
         p.error(f"no configs matched --only-config {a.only_config!r}")
@@ -153,7 +154,10 @@ def main(argv=None) -> int:
             num_threads=a.gsm8k_threads,
         )
         evaluate = lambda session: evaluator.evaluate()
-        print(f"accuracy gate: gsm8k x{a.gsm8k_examples}  ({gate.metric} >= {gate.threshold})")
+        print(
+            f"accuracy gate: gsm8k x{a.gsm8k_examples}  "
+            f"({gate.metric} within {gate.tolerance} of the branch baseline)"
+        )
 
     evaluate_hashes = None
     if gate is not None and accuracy_invariant_search(branch, points):
@@ -182,7 +186,7 @@ def main(argv=None) -> int:
         "force": a.force,
         "workload": [{"isl": wp.isl, "osl": wp.osl, "concurrency": wp.concurrency} for wp in workload],
         "gate": (
-            {"dataset": gate.dataset, "metric": gate.metric, "threshold": gate.threshold,
+            {"dataset": gate.dataset, "metric": gate.metric, "tolerance": gate.tolerance,
              "direction": gate.direction, "gsm8k_examples": a.gsm8k_examples}
             if gate is not None else None
         ),

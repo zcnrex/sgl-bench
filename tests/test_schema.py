@@ -1,10 +1,10 @@
-"""Schema validation tests ([[RFC-0001:C-SCOPE]], [[RFC-0001:C-PRECISION-BRANCH]])."""
+"""Schema validation tests ([[RFC-0001:C-SCOPE]], [[RFC-0001:C-BRANCH]])."""
 
 import unittest
 
 from pydantic import ValidationError
 
-from sglbench.argsearch.schema import PrecisionBranch, SearchConfig
+from sglbench.argsearch.schema import Branch, SearchConfig
 
 
 def _branch(**over):
@@ -21,7 +21,7 @@ def _branch(**over):
 
 def _config(branch_over=None):
     return SearchConfig.model_validate(
-        {"model": "m", "precision_branches": [_branch(**(branch_over or {}))]}
+        {"model": "m", "branches": [_branch(**(branch_over or {}))]}
     )
 
 
@@ -46,7 +46,7 @@ class SchemaTest(unittest.TestCase):
             _config({"fixed": {"quantization": "modelopt_fp4", "a": 9}})
 
     def test_quantization_as_candidate_rejected(self):
-        with self.assertRaisesRegex(ValidationError, "precision-defining"):
+        with self.assertRaisesRegex(ValidationError, "weight-precision"):
             _config({"fixed": {}, "candidate": [{"name": "quantization", "values": ["modelopt_fp4", "fp8"]}],
                      "baseline": {"quantization": "modelopt_fp4"}})
 
@@ -80,16 +80,31 @@ class SchemaTest(unittest.TestCase):
             _config({"constraints": [{"name": "empty", "when": {"a": [1]}}]})
 
     def test_duplicate_branch_names_rejected(self):
-        with self.assertRaisesRegex(ValidationError, "duplicate precision branch"):
+        with self.assertRaisesRegex(ValidationError, "duplicate branch"):
             SearchConfig.model_validate(
-                {"model": "m", "precision_branches": [_branch(), _branch()]}
+                {"model": "m", "branches": [_branch(), _branch()]}
             )
 
     def test_multi_branch_ok(self):
         cfg = SearchConfig.model_validate(
-            {"model": "m", "precision_branches": [_branch(name="nvfp4"), _branch(name="fp8")]}
+            {"model": "m", "branches": [_branch(name="b200-fp8kv"), _branch(name="b200-bf16kv")]}
         )
-        self.assertEqual([b.name for b in cfg.precision_branches], ["nvfp4", "fp8"])
+        self.assertEqual([b.name for b in cfg.branches], ["b200-fp8kv", "b200-bf16kv"])
+
+    def test_precision_branches_alias_accepted(self):
+        cfg = SearchConfig.model_validate(
+            {"model": "m", "precision_branches": [_branch()]}
+        )
+        self.assertEqual([b.name for b in cfg.branches], ["b"])
+
+    def test_branch_keys_recorded(self):
+        b = Branch.model_validate(_branch(hardware="8xH100", kv_cache_precision="bf16"))
+        self.assertEqual(b.branch_keys(), {"hardware": "8xH100", "kv_cache_precision": "bf16"})
+
+    def test_kv_cache_precision_defaults_to_fixed_dtype(self):
+        b = Branch.model_validate(_branch(fixed={"quantization": "modelopt_fp4", "kv-cache-dtype": "fp8_e4m3"}))
+        self.assertEqual(b.kv_cache_precision_value, "fp8_e4m3")
+        self.assertEqual(b.branch_keys()["kv_cache_precision"], "fp8_e4m3")
 
     def test_focused_grid_valid(self):
         cfg = _config({
@@ -136,12 +151,13 @@ class SchemaTest(unittest.TestCase):
     def test_quality_gate_loads(self):
         cfg = SearchConfig.model_validate({
             "model": "m",
-            "quality_gate": {"dataset": "gpqa", "threshold": 0.45},
-            "precision_branches": [_branch()],
+            "quality_gate": {"dataset": "gpqa", "tolerance": 0.02},
+            "branches": [_branch()],
         })
         self.assertEqual(cfg.quality_gate.dataset, "gpqa")
         self.assertEqual(cfg.quality_gate.metric, "accuracy")
         self.assertEqual(cfg.quality_gate.direction, "higher")
+        self.assertEqual(cfg.quality_gate.tolerance, 0.02)
 
     def test_candidate_accuracy_invariant_default_false(self):
         cfg = _config({
@@ -158,8 +174,16 @@ class SchemaTest(unittest.TestCase):
         with self.assertRaises(ValidationError):
             SearchConfig.model_validate({
                 "model": "m",
-                "quality_gate": {"dataset": "d", "threshold": 1.0, "direction": "sideways"},
-                "precision_branches": [_branch()],
+                "quality_gate": {"dataset": "d", "tolerance": 0.1, "direction": "sideways"},
+                "branches": [_branch()],
+            })
+
+    def test_quality_gate_rejects_negative_tolerance(self):
+        with self.assertRaises(ValidationError):
+            SearchConfig.model_validate({
+                "model": "m",
+                "quality_gate": {"dataset": "d", "tolerance": -0.1},
+                "branches": [_branch()],
             })
 
 

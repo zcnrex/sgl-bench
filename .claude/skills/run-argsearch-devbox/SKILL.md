@@ -12,7 +12,7 @@ never kills the sweep; poll from your side.
 ## Fast path
 
 ```bash
-scripts/devbox_sweep.sh --config configs/nemotron_v3_ultra.yaml --branch nvfp4 \
+scripts/devbox_sweep.sh --config configs/nemotron_v3_ultra_nvfp4.yaml --branch b200-fp8kv \
     --mode ofat --isl-osl 8192x256 --concurrency 1 8 32
 ```
 Extra args pass straight to `argsearch-run`. The script syncs the repo, tears down any stray
@@ -43,12 +43,12 @@ reconnect-tolerantly, and fetches results to `out/sweep/`. Env overrides: `DEVBO
 1. `rsync -az --exclude .git --exclude out … ./ <devbox>:/sgl-workspace/sgl-bench/` then
    `ssh -n <devbox> 'pip install -e /sgl-workspace/sgl-bench -q'` (editable; later syncs are live).
 2. `ssh -n <devbox> 'cd /sgl-workspace/sgl-bench && HF_HOME=/scratch/huggingface nohup
-   python -m sglbench.argsearch.run --config … --branch nvfp4 --mode ofat --port 40000
+   python -m sglbench.argsearch.run --config … --branch b200-fp8kv --mode ofat --port 40000
    --out /sgl-workspace/sweep-out --isl-osl 8192x256 --concurrency 1 8 32 > /sgl-workspace/sweep.log 2>&1 &'`
 3. Poll: `ssh -n <devbox> 'tail -5 /sgl-workspace/sweep.log; tail -1 /sgl-workspace/sweep-out/results.jsonl'`
    until `wrote N records`. Results stream per config, so a crash keeps finished configs.
 4. Frontier: `ssh -n <devbox> 'cd /sgl-workspace/sgl-bench && python -m sglbench.argsearch.objective
-   --config configs/nemotron_v3_ultra.yaml --results /sgl-workspace/sweep-out/results.jsonl --no-save'`.
+   --config configs/nemotron_v3_ultra_nvfp4.yaml --results /sgl-workspace/sweep-out/results.jsonl --no-save'`.
 
 ## Useful argsearch-run flags
 

@@ -11,7 +11,7 @@ from sglbench.argsearch import run
 from sglbench.argsearch.generate import load_config
 from sglbench.argsearch.measure import capture_environment, environment_digest
 
-CONFIG = Path(__file__).resolve().parents[1] / "configs" / "nemotron_v3_ultra.yaml"
+CONFIG = Path(__file__).resolve().parents[1] / "configs" / "nemotron_v3_ultra_nvfp4.yaml"
 NVFP4_MODEL = "nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-NVFP4"
 
 
@@ -51,7 +51,7 @@ class FakeManager:
 class SelectTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.branch = load_config(CONFIG).branch("nvfp4")
+        cls.branch = load_config(CONFIG).branch("b200-fp8kv")
 
     def test_limit_configs_picks_baseline_only(self):
         pts = run.select_points(self.branch, "ofat", 1)
@@ -78,7 +78,7 @@ class DryRunTest(unittest.TestCase):
         buf = io.StringIO()
         with redirect_stdout(buf):
             rc = run.main([
-                "--config", str(CONFIG), "--branch", "nvfp4", "--mode", "ofat",
+                "--config", str(CONFIG), "--branch", "b200-fp8kv", "--mode", "ofat",
                 "--limit-configs", "1", "--concurrency", "1", "--isl-osl", "8192x1024",
                 "--dry-run",
             ])
@@ -98,7 +98,7 @@ class LiveRunTest(unittest.TestCase):
                 buf = io.StringIO()
                 with redirect_stdout(buf):
                     rc = run.main([
-                        "--config", str(CONFIG), "--branch", "nvfp4", "--mode", "ofat",
+                        "--config", str(CONFIG), "--branch", "b200-fp8kv", "--mode", "ofat",
                         "--limit-configs", "1", "--concurrency", "1", "--isl-osl", "8192x1024",
                         "--repeats", "2", "--out", d, "--frontier",
                     ])
@@ -107,10 +107,10 @@ class LiveRunTest(unittest.TestCase):
                 lines = rp.read_text().splitlines()
                 self.assertEqual(len(lines), 1)
                 rec = json.loads(lines[0])
-                self.assertEqual(rec["branch"], "nvfp4")
+                self.assertEqual(rec["branch"], "b200-fp8kv")
                 self.assertIn("decode_throughput_tok_s", rec["metrics"])
                 manifest = json.loads((rp.parent / "manifest.json").read_text())
-                self.assertEqual(manifest["branch"], "nvfp4")
+                self.assertEqual(manifest["branch"], "b200-fp8kv")
                 self.assertEqual(manifest["bench_tool"], "bench_one_batch_server")
                 self.assertIn("measured_at", manifest)
                 self.assertIn("environment", manifest)
@@ -119,46 +119,62 @@ class LiveRunTest(unittest.TestCase):
 
 
 class GateWiringTest(unittest.TestCase):
-    def _run_with_eval(self, accuracy, out_dir):
+    """The gate is within-branch and baseline-relative ([[RFC-0001:C-QUALITY-GATE]]): the
+    baseline config is the reference (it always passes its own gate); a variant is excluded
+    only when it degrades beyond the tolerance from that same-branch baseline."""
+
+    def _run(self, scores, out_dir, limit):
         orig_mgr, orig_ev = run.SGLangServerManager, run.GSM8KEvaluator
         run.SGLangServerManager = FakeManager
+        it = iter(scores)
 
         class FakeEval:
             def __init__(self, base_url, **kw):
                 pass
 
             def evaluate(self):
-                return {"accuracy": accuracy}
+                return {"accuracy": next(it)}
 
         run.GSM8KEvaluator = FakeEval
         try:
             buf = io.StringIO()
             with redirect_stdout(buf):
                 rc = run.main([
-                    "--config", str(CONFIG), "--branch", "nvfp4", "--mode", "ofat",
-                    "--limit-configs", "1", "--concurrency", "1", "--isl-osl", "8192x256",
+                    "--config", str(CONFIG), "--branch", "b200-fp8kv", "--mode", "ofat",
+                    "--limit-configs", str(limit), "--concurrency", "1", "--isl-osl", "8192x256",
                     "--repeats", "2", "--gsm8k-examples", "20", "--out", out_dir, "--frontier",
                 ])
             return rc, buf.getvalue()
         finally:
             run.SGLangServerManager, run.GSM8KEvaluator = orig_mgr, orig_ev
 
-    def test_passing_accuracy_stamps_and_admits(self):
-        with tempfile.TemporaryDirectory() as d:
-            rc, out = self._run_with_eval(0.97, d)
-            self.assertEqual(rc, 0)
-            rec = json.loads(results_path(d).read_text().splitlines()[0])
-            self.assertEqual(rec["accuracy"], {"accuracy": 0.97})
-            self.assertTrue(rec["quality_pass"])
-            self.assertIn("eligible=1", out)
+    def _records(self, d):
+        return [json.loads(l) for l in results_path(d).read_text().splitlines()]
 
-    def test_failing_accuracy_excluded(self):
+    def test_baseline_passes_its_own_gate(self):
         with tempfile.TemporaryDirectory() as d:
-            rc, out = self._run_with_eval(0.50, d)
+            rc, out = self._run([0.50], d, limit=1)
             self.assertEqual(rc, 0)
-            rec = json.loads(results_path(d).read_text().splitlines()[0])
-            self.assertFalse(rec["quality_pass"])
-            self.assertIn("eligible=0", out)
+            recs = self._records(d)
+            self.assertTrue(all(r["config_label"] == "baseline" for r in recs))
+            self.assertTrue(all(r["quality_pass"] for r in recs))
+
+    def test_passing_variant_admitted(self):
+        with tempfile.TemporaryDirectory() as d:
+            rc, out = self._run([0.97, 0.96], d, limit=2)
+            self.assertEqual(rc, 0)
+            variant = [r for r in self._records(d) if r["config_label"] != "baseline"]
+            self.assertTrue(variant and all(r["quality_pass"] for r in variant))
+
+    def test_degraded_variant_excluded(self):
+        with tempfile.TemporaryDirectory() as d:
+            rc, out = self._run([0.97, 0.50], d, limit=2)
+            self.assertEqual(rc, 0)
+            recs = self._records(d)
+            baseline = [r for r in recs if r["config_label"] == "baseline"]
+            variant = [r for r in recs if r["config_label"] != "baseline"]
+            self.assertTrue(all(r["quality_pass"] for r in baseline))
+            self.assertTrue(variant and all(r["quality_pass"] is False for r in variant))
 
 
 class ReuseTest(unittest.TestCase):
@@ -169,7 +185,7 @@ class ReuseTest(unittest.TestCase):
             buf = io.StringIO()
             with redirect_stdout(buf):
                 rc = run.main([
-                    "--config", str(CONFIG), "--branch", "nvfp4", "--mode", "ofat",
+                    "--config", str(CONFIG), "--branch", "b200-fp8kv", "--mode", "ofat",
                     "--limit-configs", "1", "--concurrency", "1", "8",
                     "--isl-osl", "8192x1024", "--repeats", "2", "--out", out_dir, *extra,
                 ])
@@ -227,7 +243,7 @@ class DryRunPathTest(unittest.TestCase):
         buf = io.StringIO()
         with redirect_stdout(buf):
             rc = run.main([
-                "--config", str(CONFIG), "--branch", "nvfp4", "--mode", "ofat",
+                "--config", str(CONFIG), "--branch", "b200-fp8kv", "--mode", "ofat",
                 "--limit-configs", "1", "--concurrency", "1", "--isl-osl", "8192x1024",
                 "--out", "outbase", "--dry-run",
             ])

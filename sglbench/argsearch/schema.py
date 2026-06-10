@@ -2,8 +2,10 @@
 
 Models the versioned source of truth for restart-required server configurations
 ([[RFC-0001:C-CONFIG-SOURCE]]). Arguments are bucketed into fixed / candidate /
-constrained ([[RFC-0001:C-SCOPE]]), and precision is a top-level branch rather than
-a search axis ([[RFC-0001:C-PRECISION-BRANCH]]).
+constrained ([[RFC-0001:C-SCOPE]]). The served model checkpoint carries the weight
+precision and is the outermost scope; a branch is a partition WITHIN one checkpoint,
+keyed by the non-substitutable runtime/hardware attributes that do not change the
+checkpoint -- the hardware target and the KV-cache precision ([[RFC-0001:C-BRANCH]]).
 """
 
 from __future__ import annotations
@@ -25,9 +27,7 @@ SPEC_DECODE_ARGS = {
     "speculative-draft-model",
 }
 
-# Arguments that define the precision branch; they belong in `fixed`, never `candidate`
-# ([[RFC-0001:C-PRECISION-BRANCH]]).
-PRECISION_DEFINING_ARGS = {"quantization"}
+WEIGHT_PRECISION_ARGS = {"quantization"}
 
 MAX_CANDIDATES = 10  # [[RFC-0001:C-SCOPE]]
 
@@ -97,10 +97,17 @@ class FocusedGrid(BaseModel):
         return self
 
 
-class PrecisionBranch(BaseModel):
-    name: str = Field(description="Branch identifier, e.g. nvfp4. CONSUMED.")
-    checkpoint: str | None = Field(default=None, description="Served model path for this branch; the default served model and `<model>` output slug. CONSUMED.")
-    hardware: str | None = Field(default=None, description="Recorded for humans/provenance, never consumed by the tooling. INFORMATIONAL.")
+class Branch(BaseModel):
+    """A partition WITHIN one model checkpoint ([[RFC-0001:C-BRANCH]]).
+
+    The served checkpoint (and its weight precision) is the model-level scope above the
+    branch; a branch is identified by its branch keys -- the hardware target and the
+    KV-cache precision -- which do not change the checkpoint.
+    """
+
+    name: str = Field(description="Branch identifier, e.g. b200-fp8kv. CONSUMED.")
+    hardware: str | None = Field(default=None, description="Hardware-target branch key (accelerator model + device count); recorded in the measurement identity. CONSUMED.")
+    kv_cache_precision: str | None = Field(default=None, description="KV-cache-precision branch key; defaults to the fixed `kv-cache-dtype` arg when unset. CONSUMED.")
     fixed: dict[str, Scalar] = Field(default_factory=dict, description="Known-best args held constant for every config in the branch. CONSUMED.")
     candidate: list[CandidateArg] = Field(default_factory=list, description="Args to vary (<=10). CONSUMED.")
     constraints: list[Constraint] = Field(default_factory=list, description="Illegal-combination rules filtering generated configs. CONSUMED.")
@@ -111,13 +118,23 @@ class PrecisionBranch(BaseModel):
     def candidate_names(self) -> list[str]:
         return [c.name for c in self.candidate]
 
+    @property
+    def kv_cache_precision_value(self) -> Scalar:
+        if self.kv_cache_precision is not None:
+            return self.kv_cache_precision
+        return self.fixed.get("kv-cache-dtype")
+
+    def branch_keys(self) -> dict[str, Scalar]:
+        """The recorded branch-key identity ([[RFC-0001:C-BRANCH]])."""
+        return {"hardware": self.hardware, "kv_cache_precision": self.kv_cache_precision_value}
+
     def merged_baseline(self) -> dict[str, Scalar]:
         cfg = dict(self.fixed)
         cfg.update(self.baseline)
         return cfg
 
     @model_validator(mode="after")
-    def _validate(self) -> "PrecisionBranch":
+    def _validate(self) -> "Branch":
         names = self.candidate_names
 
         if len(names) != len(set(names)):
@@ -139,11 +156,11 @@ class PrecisionBranch(BaseModel):
                 f"branch '{self.name}': speculative-decode args out of scope (C-SCOPE): {sorted(spec)}"
             )
 
-        precision = set(names) & PRECISION_DEFINING_ARGS
-        if precision:
+        weight_precision = set(names) & WEIGHT_PRECISION_ARGS
+        if weight_precision:
             raise ValueError(
-                f"branch '{self.name}': precision-defining args must be fixed, not candidate "
-                f"(C-PRECISION-BRANCH): {sorted(precision)}"
+                f"branch '{self.name}': weight-precision args define the checkpoint and must be "
+                f"fixed, not candidate (C-BRANCH): {sorted(weight_precision)}"
             )
 
         for c in self.candidate:
@@ -253,38 +270,52 @@ class SLO(BaseModel):
 
 
 class QualityGate(BaseModel):
-    """Accuracy acceptance gate ([[RFC-0001:C-QUALITY-GATE]]): its pass/fail threshold and
-    evaluation dataset are defined before the search and evaluated per precision branch."""
+    """Accuracy acceptance gate ([[RFC-0001:C-QUALITY-GATE]]): within-branch and
+    baseline-relative. A config passes only if its metric is no more than `tolerance`
+    worse than its OWN branch baseline; the tolerance and dataset are fixed before the
+    search and the gate is evaluated per branch."""
 
     dataset: str = Field(description="Evaluation dataset name passed to the accuracy harness. CONSUMED.")
-    metric: str = Field(default="accuracy", description="Score key compared against the threshold. CONSUMED.")
-    threshold: float = Field(description="Pass/fail bound for the metric. CONSUMED.")
-    direction: Literal["higher", "lower"] = Field(default="higher", description="`higher`: score >= threshold passes; `lower`: score <= threshold. CONSUMED.")
+    metric: str = Field(default="accuracy", description="Score key compared against the branch baseline. CONSUMED.")
+    tolerance: float = Field(ge=0, description="Maximum tolerated degradation from the branch baseline metric (one-sided). CONSUMED.")
+    direction: Literal["higher", "lower"] = Field(default="higher", description="`higher`: degradation = baseline - score; `lower`: degradation = score - baseline. CONSUMED.")
 
-    def passes(self, score: float | None) -> bool:
-        if score is None:
+    def degradation(self, score: float, baseline: float) -> float:
+        """How far `score` falls short of the branch `baseline` (negative when better)."""
+        return baseline - score if self.direction == "higher" else score - baseline
+
+    def passes(self, score: float | None, baseline: float | None) -> bool:
+        """True iff `score` is no more than `tolerance` worse than the branch `baseline`
+        ([[RFC-0001:C-QUALITY-GATE]]). A missing score or baseline fails."""
+        if score is None or baseline is None:
             return False
-        if self.direction == "higher":
-            return score >= self.threshold
-        return score <= self.threshold
+        return self.degradation(score, baseline) <= self.tolerance
 
 
 class SearchConfig(BaseModel):
-    model: str = Field(description="Default served model; the `<model>` output slug when a branch sets no checkpoint. CONSUMED.")
+    """One model checkpoint and the branches searched within it ([[RFC-0001:C-BRANCH]]).
+
+    `model` is the served checkpoint (it carries the weight precision and is the `<model>`
+    output slug); every branch is a within-checkpoint partition under it.
+    """
+
+    model: str = Field(description="Served model checkpoint; carries the weight precision and is the `<model>` output slug. CONSUMED.")
     workload_axes: dict[str, Any] = Field(default_factory=dict, description="Inner-loop axes (isl_osl_pairs, report_isl_osl_pairs, concurrency); never permuted into restart-required configs. CONSUMED.")
     slo: SLO | None = Field(default=None, description="Decode-first objective SLO; required for the frontier. CONSUMED.")
     quality_gate: QualityGate | None = Field(default=None, description="Optional accuracy acceptance gate. CONSUMED.")
-    precision_branches: list[PrecisionBranch] = Field(min_length=1, description="One or more precision branches to search. CONSUMED.")
+    branches: list[Branch] = Field(min_length=1, alias="precision_branches", description="One or more within-checkpoint branches to search. CONSUMED.")
+
+    model_config = {"populate_by_name": True}
 
     @model_validator(mode="after")
     def _unique_branches(self) -> "SearchConfig":
-        ns = [b.name for b in self.precision_branches]
+        ns = [b.name for b in self.branches]
         if len(ns) != len(set(ns)):
-            raise ValueError("duplicate precision branch names")
+            raise ValueError("duplicate branch names")
         return self
 
-    def branch(self, name: str) -> PrecisionBranch:
-        for b in self.precision_branches:
+    def branch(self, name: str) -> Branch:
+        for b in self.branches:
             if b.name == name:
                 return b
-        raise KeyError(f"no precision branch '{name}'")
+        raise KeyError(f"no branch '{name}'")

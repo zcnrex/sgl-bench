@@ -116,7 +116,7 @@ class DriverTest(unittest.TestCase):
         self.assertTrue(all(r.accuracy is None and r.quality_pass is None for r in results))
 
 
-GATE = QualityGate(dataset="gpqa", metric="accuracy", threshold=0.45, direction="higher")
+GATE = QualityGate(dataset="gpqa", metric="accuracy", tolerance=0.15, direction="higher")
 
 
 class GateStampingTest(unittest.TestCase):

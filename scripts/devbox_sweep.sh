@@ -8,7 +8,7 @@
 # crash keeps completed configs.
 #
 # Usage:
-#   scripts/devbox_sweep.sh --config configs/nemotron_v3_ultra.yaml --branch nvfp4 \
+#   scripts/devbox_sweep.sh --config configs/nemotron_v3_ultra_nvfp4.yaml --branch b200-fp8kv \
 #       --mode ofat --isl-osl 8192x256 --concurrency 1 8 32
 #   (any extra args are passed straight through to `python -m sglbench.argsearch.run`)
 #

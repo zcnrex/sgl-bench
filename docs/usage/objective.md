@@ -39,8 +39,8 @@ from the **acceptable results** (the frontier) — at every stage, never bought 
 quality_gate:
   dataset: gsm8k           # fast first-layer gate; reserve gpqa_diamond (~2h) for final validation
   metric: accuracy
-  threshold: 0.95
-  direction: higher        # score >= threshold passes; use "lower" for e.g. perplexity
+  tolerance: 0.02          # pass if no more than 0.02 below the branch baseline
+  direction: higher        # degradation = baseline - score; use "lower" for e.g. perplexity
 ```
 
 Accuracy is evaluated once per launched config (the driver's `evaluate` callback) and stamped
@@ -70,7 +70,7 @@ persist the inspection view, redirect stdout yourself.
 ## Run it
 
 ```bash
-argsearch-frontier --config configs/nemotron_v3_ultra.yaml \
+argsearch-frontier --config configs/nemotron_v3_ultra_nvfp4.yaml \
     --results out/<model>/runs/bench_one_batch_server/<env>/results.jsonl
 # or: python -m sglbench.argsearch.objective --config ... --results ...
 ```
@@ -125,7 +125,7 @@ over the OSL-averaged `output_throughput`. TTFT/per-token selection prefer perce
 ```python
 from sglbench.argsearch import load_config, load_results, build_frontier
 
-cfg = load_config("configs/nemotron_v3_ultra.yaml")
+cfg = load_config("configs/nemotron_v3_ultra_nvfp4.yaml")
 records = load_results("out/<model>/runs/bench_one_batch_server/<env>/results.jsonl")
 passing, frontier = build_frontier(records, cfg.slo, branch="nvfp4", stat="median",
                                    gate=cfg.quality_gate)

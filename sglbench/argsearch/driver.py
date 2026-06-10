@@ -97,6 +97,7 @@ def run_search(
     skip = skip_keys or set()
     results: list[MeasurementResult] = []
     last_accuracy: dict[str, float] | None = None
+    baseline_score: float | None = None
     for cp in points:
         pending = [wp for wp in workload if (cp.config_hash, wp.label) not in skip]
         if not pending:
@@ -110,7 +111,12 @@ def run_search(
                 if evaluate_hashes is None or cp.config_hash in evaluate_hashes:
                     last_accuracy = evaluate(session)
                 accuracy = last_accuracy
-                quality_pass = gate.passes(accuracy.get(gate.metric)) if accuracy else None
+                score = accuracy.get(gate.metric) if accuracy else None
+                if cp.label == "baseline" and score is not None:
+                    baseline_score = score
+                quality_pass = (
+                    gate.passes(score, baseline_score) if baseline_score is not None else None
+                )
             for wp in pending:
                 res = measure_point(
                     session.client,
@@ -118,6 +124,8 @@ def run_search(
                     branch=cp.branch,
                     point=wp,
                     repeats=repeats,
+                    branch_keys=cp.branch_keys,
+                    config_label=cp.label,
                 )
                 res.accuracy = accuracy
                 res.quality_pass = quality_pass

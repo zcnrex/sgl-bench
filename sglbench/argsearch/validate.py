@@ -25,10 +25,12 @@ def main(argv=None) -> int:
 
     print(f"OK {a.config}")
     print(f"model: {cfg.model}")
-    for b in cfg.precision_branches:
+    for b in cfg.branches:
+        keys = b.branch_keys()
         print(
-            f"  branch {b.name}: {len(b.candidate)} candidates, "
-            f"{len(b.constraints)} constraints, {len(generate_ofat(b))} OFAT configs"
+            f"  branch {b.name} (hw={keys['hardware']}, kv={keys['kv_cache_precision']}): "
+            f"{len(b.candidate)} candidates, {len(b.constraints)} constraints, "
+            f"{len(generate_ofat(b))} OFAT configs"
         )
     return 0
 

@@ -6,9 +6,9 @@ optionally runs the accuracy gate, streams provenance records, and prints the fr
 ties together `generate.py`, `sglang_adapter.py`, `driver.py`, and `objective.py`.
 
 ```bash
-python -m sglbench.argsearch.run --config configs/nemotron_v3_ultra.yaml --branch nvfp4 \
+python -m sglbench.argsearch.run --config configs/nemotron_v3_ultra_nvfp4.yaml --branch b200-fp8kv \
     --mode ofat --isl-osl 8192x256 --concurrency 1 8 32 --port 40000 --frontier
-# or, after install:  argsearch-run --config ... --branch nvfp4 --mode ofat ...
+# or, after install:  argsearch-run --config ... --branch b200-fp8kv --mode ofat ...
 ```
 
 Each config is an outer-loop relaunch (RFC-0001:C-LOOP-STRUCTURE); the workload points are
@@ -75,9 +75,9 @@ is replaced).
 
 `--gsm8k-examples N` (with `--gsm8k-threads T`) enables the accuracy gate
 (RFC-0001:C-QUALITY-GATE): gsm8k is evaluated once per launched config via `sgl-eval`, and
-each record is stamped with the accuracy and a `quality_pass` flag. A config below the
-config's `quality_gate.threshold` is excluded from the frontier but kept (flagged) in the
-stream. For an **accuracy-invariant-only** search (all varied args marked
+each record is stamped with the accuracy and a `quality_pass` flag. A config more than the
+config's `quality_gate.tolerance` below its branch baseline is excluded from the frontier
+but kept (flagged) in the stream. For an **accuracy-invariant-only** search (all varied args marked
 `accuracy_invariant`), per-config evaluation is auto-skipped — only the baseline + a
 spot-check config are evaluated and that accuracy is reused. Without `--gsm8k-examples`, the
 run is perf-only and (when a `quality_gate` is defined) nothing reaches the frontier.
@@ -98,7 +98,7 @@ Use `scripts/devbox_sweep.sh`, which syncs the repo, launches `argsearch-run` **
 (survives ssh/proxy drops), polls reconnect-tolerantly, and fetches results:
 
 ```bash
-scripts/devbox_sweep.sh --config configs/nemotron_v3_ultra.yaml --branch nvfp4 \
+scripts/devbox_sweep.sh --config configs/nemotron_v3_ultra_nvfp4.yaml --branch b200-fp8kv \
     --mode ofat --isl-osl 8192x256 --concurrency 1 8 32
 ```
 

@@ -18,10 +18,10 @@ slo:
 quality_gate:
   dataset: gsm8k
   metric: accuracy
-  threshold: 0.95
+  tolerance: 0.02
   direction: higher
-precision_branches:
-  - name: nvfp4
+branches:
+  - name: b200-fp8kv
     baseline:
       mamba-ssm-dtype: float32
     candidate:
@@ -34,7 +34,7 @@ def agg(v):
     return {"median": v, "mean": v, "n": 2}
 
 
-def rec(h, c, decode_thr, ptok=20.0, ttft=400.0, accuracy=None, branch="nvfp4"):
+def rec(h, c, decode_thr, ptok=20.0, ttft=400.0, accuracy=None, branch="b200-fp8kv"):
     r = {
         "config_hash": h,
         "branch": branch,
@@ -57,14 +57,14 @@ class CompareMainTest(unittest.TestCase):
         cfg.write_text(CONFIG_YAML)
         res = Path(d) / "results.jsonl"
         res.write_text("\n".join(json.dumps(r) for r in records) + "\n")
-        branch = load_config(str(cfg)).branch("nvfp4")
+        branch = load_config(str(cfg)).branch("b200-fp8kv")
         points = generate_ofat(branch)
         return str(cfg), str(res), points[0].config_hash, points[1].config_hash
 
     def _run(self, cfg, res):
         buf = io.StringIO()
         with redirect_stdout(buf):
-            rc = main(["--config", cfg, "--branch", "nvfp4", "--results", res])
+            rc = main(["--config", cfg, "--branch", "b200-fp8kv", "--results", res])
         return rc, buf.getvalue()
 
     def test_delta_and_baseline_marker(self):

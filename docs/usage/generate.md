@@ -13,10 +13,10 @@ grid` reads them from there.
 
 ```bash
 # OFAT: vary one candidate at a time around the baseline
-python -m sglbench.argsearch --config configs/nemotron_v3_ultra.yaml --branch nvfp4 --mode ofat
+python -m sglbench.argsearch --config configs/nemotron_v3_ultra_nvfp4.yaml --branch b200-fp8kv --mode ofat
 
 # Focused grid over the branch's declared focused_grid.args
-python -m sglbench.argsearch --config configs/nemotron_v3_ultra.yaml --branch nvfp4 --mode grid
+python -m sglbench.argsearch --config configs/nemotron_v3_ultra_nvfp4.yaml --branch b200-fp8kv --mode grid
 ```
 
 `--grid-args` is accepted only as a guard: if supplied it MUST equal the declared
@@ -62,7 +62,7 @@ mode dir, recording the admitted args, rationale, applied pins, and emitted conf
 (RFC-0001:C-SEARCH-STRATEGY). `--out` sets the base dir (default `out`, gitignored).
 
 ```bash
-python -m sglbench.argsearch --config configs/nemotron_v3_ultra.yaml --branch nvfp4 \
+python -m sglbench.argsearch --config configs/nemotron_v3_ultra_nvfp4.yaml --branch b200-fp8kv \
     --mode ofat --save
 # wrote 7 configs to out/nvidia-NVIDIA-Nemotron-3-Ultra-550B-A55B-NVFP4/configs/ofat/ \
 #   (index: .../index.jsonl)
@@ -74,7 +74,7 @@ python -m sglbench.argsearch --config configs/nemotron_v3_ultra.yaml --branch nv
 seed config admits all four in `focused_grid.args`:
 
 ```
-python -m sglbench.argsearch --config configs/nemotron_v3_ultra.yaml --branch nvfp4 \
+python -m sglbench.argsearch --config configs/nemotron_v3_ultra_nvfp4.yaml --branch b200-fp8kv \
     --mode grid --format label
 # 16 raw combos -> 4 valid (each pair on-on or off-off):
 #   ep1/none   + dp1/off
@@ -88,7 +88,7 @@ python -m sglbench.argsearch --config configs/nemotron_v3_ultra.yaml --branch nv
 ```python
 from sglbench.argsearch import load_config, generate_ofat, generate_grid
 
-cfg = load_config("configs/nemotron_v3_ultra.yaml")
+cfg = load_config("configs/nemotron_v3_ultra_nvfp4.yaml")
 branch = cfg.branch("nvfp4")
 points = generate_ofat(branch)                       # list[ConfigPoint]
 grid = generate_grid(branch)                         # uses branch.focused_grid.args + pins

@@ -23,8 +23,8 @@ from sglbench.argsearch.schema import SearchConfig
 
 GATED_DOC = {
     "model": "m",
-    "quality_gate": {"dataset": "d", "metric": "accuracy", "threshold": 0.5},
-    "precision_branches": [{
+    "quality_gate": {"dataset": "d", "metric": "accuracy", "tolerance": 0.05},
+    "branches": [{
         "name": "b",
         "fixed": {"quantization": "modelopt_fp4"},
         "candidate": [{"name": "g", "values": [1, 2]}, {"name": "p", "values": ["lo", "hi"]}],
@@ -33,14 +33,14 @@ GATED_DOC = {
     }],
 }
 
-CONFIG = Path(__file__).resolve().parents[1] / "configs" / "nemotron_v3_ultra.yaml"
+CONFIG = Path(__file__).resolve().parents[1] / "configs" / "nemotron_v3_ultra_nvfp4.yaml"
 
 
 def _pin_branch():
     """Branch whose focused_grid pins a non-gridded candidate away from its baseline."""
     return SearchConfig.model_validate({
         "model": "m",
-        "precision_branches": [{
+        "branches": [{
             "name": "b",
             "fixed": {"quantization": "modelopt_fp4"},
             "candidate": [
@@ -61,7 +61,7 @@ class GenerateTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.cfg = load_config(CONFIG)
-        cls.branch = cls.cfg.branch("nvfp4")
+        cls.branch = cls.cfg.branch("b200-fp8kv")
 
     def test_seeded_config_loads(self):
         self.assertEqual(len(self.branch.candidate), 9)
@@ -172,7 +172,7 @@ class GenerateTest(unittest.TestCase):
     def test_save_writes_adr0007_layout(self):
         with tempfile.TemporaryDirectory() as tmp:
             rc = gen.main([
-                "--config", str(CONFIG), "--branch", "nvfp4", "--mode", "ofat",
+                "--config", str(CONFIG), "--branch", "b200-fp8kv", "--mode", "ofat",
                 "--save", "--out", tmp,
             ])
             self.assertEqual(rc, 0)
@@ -194,7 +194,7 @@ class GenerateTest(unittest.TestCase):
 class InvariantSearchTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.branch = load_config(CONFIG).branch("nvfp4")
+        cls.branch = load_config(CONFIG).branch("b200-fp8kv")
 
     def test_ofat_over_active_args_is_not_invariant(self):
         from sglbench.argsearch.generate import accuracy_invariant_search

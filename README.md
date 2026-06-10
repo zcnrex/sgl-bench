@@ -80,23 +80,23 @@ laptop with `scripts/devbox_sweep.sh`, which syncs the repo to the devbox and ru
 
 ```bash
 # 1. Validate the search config
-python3 -m sglbench.argsearch.validate configs/nemotron_v3_ultra.yaml
+python3 -m sglbench.argsearch.validate configs/nemotron_v3_ultra_nvfp4.yaml
 
 # 2. Optional: preview restart-required configs
 #    This prints config hashes/labels only; the live search regenerates configs in step 4.
-python3 -m sglbench.argsearch --config configs/nemotron_v3_ultra.yaml --branch nvfp4 --mode ofat
-python3 -m sglbench.argsearch --config configs/nemotron_v3_ultra.yaml --branch nvfp4 --mode grid
+python3 -m sglbench.argsearch --config configs/nemotron_v3_ultra_nvfp4.yaml --branch b200-fp8kv --mode ofat
+python3 -m sglbench.argsearch --config configs/nemotron_v3_ultra_nvfp4.yaml --branch b200-fp8kv --mode grid
 
 # 3. Optional: write generated configs to out/ as <hash>.json + index.jsonl
-python3 -m sglbench.argsearch --config configs/nemotron_v3_ultra.yaml --branch nvfp4 \
+python3 -m sglbench.argsearch --config configs/nemotron_v3_ultra_nvfp4.yaml --branch b200-fp8kv \
     --mode ofat --save
 
 # 4. From your laptop, sync the repo to the GPU host and start the live search there
 DEVBOX=<your-devbox> scripts/devbox_sweep.sh \
-    --config configs/nemotron_v3_ultra.yaml --branch nvfp4 --mode ofat \
+    --config configs/nemotron_v3_ultra_nvfp4.yaml --branch b200-fp8kv --mode ofat \
     --isl-osl 8192x256 --concurrency 1 8 32 --frontier
 #   ... or, on the GPU host directly:
-#   argsearch-run --config configs/nemotron_v3_ultra.yaml --branch nvfp4 --mode ofat \
+#   argsearch-run --config configs/nemotron_v3_ultra_nvfp4.yaml --branch b200-fp8kv --mode ofat \
 #       --isl-osl 8192x256 --concurrency 1 8 32 --port 40000 --frontier
 ```
 
@@ -109,22 +109,25 @@ print the launch/bench commands without running. Full flag reference: [docs/usag
 Each measured point is one JSONL record with full provenance:
 
 ```json
-{"config_hash": "d1ede40fd0b0", "branch": "nvfp4", "label": "isl8192-osl256-c1",
- "workload": {"isl": 8192, "osl": 256, "concurrency": 1},
+{"config_hash": "d1ede40fd0b0", "branch": "b200-fp8kv", "config_label": "baseline",
+ "label": "isl8192-osl256-c1", "workload": {"isl": 8192, "osl": 256, "concurrency": 1},
  "metrics": {"decode_throughput_tok_s": {"median": 107.0, ...}, "per_token_ms": {"median": 9.35}, ...},
- "environment": {"sglang_commit": "0.5.12.post1", "library_versions": {...}, "network_env": {...}},
+ "branch_keys": {"hardware": "4xB200 single-node TP4", "kv_cache_precision": "fp8_e4m3"},
+ "environment": {"hardware": {"accelerator": "NVIDIA B200", "device_count": 4}, "sglang_commit": "0.5.12.post1", ...},
  "accuracy": {"accuracy": 0.975}, "quality_pass": true}
 ```
 
 `--frontier` (or `argsearch-frontier --config … --results out/results.jsonl`) ranks measured
-points:
+points within each branch:
 
 ```text
 slo gate: decode ptok<= 40.0ms  (ttft target 5000ms, report-only)
-quality gate: accuracy on gsm8k (min 0.95)
+quality gate: accuracy on gsm8k (<= 0.02 below the branch baseline)
+
+== branch b200-fp8kv ==
 records=21  slo_passing=21  quality_excluded=0  eligible=21  frontier=2
- 1. d1ede40fd0b0 nvfp4/baseline  isl8192-osl256-c32  decode=1861.7tok/s  ptok=17.2ms  ttft~3000ms
- 2. d1ede40fd0b0 nvfp4/baseline  isl8192-osl256-c1   decode=107.0tok/s   ptok=9.3ms   ttft~430ms
+ 1. d1ede40fd0b0 b200-fp8kv/baseline  isl8192-osl256-c32  decode=1861.7tok/s  ptok=17.2ms  ttft~3000ms
+ 2. d1ede40fd0b0 b200-fp8kv/baseline  isl8192-osl256-c1   decode=107.0tok/s   ptok=9.3ms   ttft~430ms
 ```
 
 (Aggregate decode throughput and per-user latency trade off across concurrency, so several
@@ -132,12 +135,14 @@ points are non-dominated.)
 
 ## Adapting the Config
 
-`configs/nemotron_v3_ultra.yaml` is a **seeded example** for one model on a 4-GPU host. To
-search a different model or hardware target, write your own config: bucket each server arg
-into `fixed`, `candidate` (≤10), or constraint rules; declare precision as a top-level
-`branch`; and set `slo` and `quality_gate`.
+`configs/nemotron_v3_ultra_nvfp4.yaml` is a **seeded example** for one checkpoint on a 4-GPU host.
+The served `model` is the checkpoint and carries the weight precision; a different weight
+precision (e.g. FP8) is a different checkpoint and gets its own config file. To search a
+different model or hardware target, write your own config: bucket each server arg into `fixed`,
+`candidate` (≤10), or constraint rules; declare one or more within-checkpoint `branches`, each
+keyed by its hardware target and KV-cache precision; and set `slo` and `quality_gate`.
 
-**The SLO and accuracy-gate thresholds in the example are phase-0 placeholders. Set them to
+**The SLO and accuracy-gate tolerance in the example are phase-0 placeholders. Set them to
 your real service targets before trusting the results.** See
 [docs/usage/config.md](docs/usage/config.md).
 

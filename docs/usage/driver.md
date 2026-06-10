@@ -15,7 +15,7 @@ from sglbench.argsearch import (
     load_config, generate_ofat, workload_points, run_search, write_results,
 )
 
-cfg = load_config("configs/nemotron_v3_ultra.yaml")
+cfg = load_config("configs/nemotron_v3_ultra_nvfp4.yaml")
 branch = cfg.branch("nvfp4")
 
 points = generate_ofat(branch)                       # outer: restart-required configs
@@ -78,7 +78,7 @@ from sglbench.argsearch import (
     SGLangServerManager,
 )
 
-cfg = load_config("configs/nemotron_v3_ultra.yaml")
+cfg = load_config("configs/nemotron_v3_ultra_nvfp4.yaml")
 branch = cfg.branch("nvfp4")
 
 manager = SGLangServerManager(branch.checkpoint, host="127.0.0.1", port=40000)
@@ -96,7 +96,7 @@ so the orchestration is exercised with fakes in tests. The bench transport maps 
 If you prefer to drive launches by hand instead of `run_search`, pipe `--format cli`:
 
 ```bash
-python -m sglbench.argsearch --config configs/nemotron_v3_ultra.yaml --branch nvfp4 \
+python -m sglbench.argsearch --config configs/nemotron_v3_ultra_nvfp4.yaml --branch b200-fp8kv \
     --mode ofat --format cli | while read -r line; do
   case "$line" in \#*) echo "$line"; continue;; esac
   python -m sglang.launch_server --model-path "$MODEL" $line --port 8000

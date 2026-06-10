@@ -1,7 +1,7 @@
 # Config — define & validate the search
 
 The single source of truth for what gets searched is a version-controlled YAML config
-(RFC-0001:C-CONFIG-SOURCE). `configs/nemotron_v3_ultra.yaml` is the seeded example for
+(RFC-0001:C-CONFIG-SOURCE). `configs/nemotron_v3_ultra_nvfp4.yaml` is the seeded example for
 Nemotron-3-Ultra-550B NVFP4.
 
 ## Schema reference
@@ -15,27 +15,32 @@ these one-line descriptions via pydantic `Field(description=...)`, so
 
 | Field | Type | Required | Consumed? | Meaning |
 | --- | --- | --- | --- | --- |
-| `model` | str | yes | consumed | Default served model; the `<model>` output slug when a branch sets no `checkpoint`. |
+| `model` | str | yes | consumed | Served model checkpoint; carries the weight precision and is the `<model>` output slug. |
 | `workload_axes` | map | no | consumed | Inner-loop axes (`isl_osl_pairs`, `report_isl_osl_pairs`, `concurrency`); never permuted into restart-required configs. |
 | `slo` | `SLO` | no | consumed | Decode-first objective SLO; required to build the frontier. |
 | `quality_gate` | `QualityGate` | no | consumed | Optional accuracy acceptance gate. |
-| `precision_branches` | list[`PrecisionBranch`] | yes (≥1) | consumed | One or more precision branches to search. |
+| `branches` | list[`Branch`] | yes (≥1) | consumed | One or more within-checkpoint branches to search (alias: `precision_branches`). |
 
-### `PrecisionBranch`
+### `Branch`
+
+A branch is a partition WITHIN the checkpoint named by `model` (RFC-0001:C-BRANCH). The
+weight precision defines the checkpoint and is **not** a branch key; a branch is identified
+by its branch keys — the hardware target and the KV-cache precision.
 
 | Field | Type | Required | Consumed? | Meaning |
 | --- | --- | --- | --- | --- |
-| `name` | str | yes | consumed | Branch identifier, e.g. `nvfp4`. |
-| `checkpoint` | str | no | consumed | Served model path for this branch; the default served model and the `<model>` output-dir slug. |
-| `hardware` | str | no | **informational** | Recorded for humans/provenance only; **never consumed** by the tooling. |
+| `name` | str | yes | consumed | Branch identifier, e.g. `b200-fp8kv`. |
+| `hardware` | str | no | consumed | Hardware-target branch key (accelerator model + device count); recorded in the measurement identity. |
+| `kv_cache_precision` | str | no | consumed | KV-cache-precision branch key; defaults to the fixed `kv-cache-dtype` arg when unset. |
 | `fixed` | map | no | consumed | Known-best args held constant for every config in the branch. |
 | `candidate` | list[`CandidateArg`] | no | consumed | Args to vary (≤ 10). |
 | `constraints` | list[`Constraint`] | no | consumed | Illegal-combination rules filtering generated configs. |
-| `baseline` | map | no | consumed | One starting value per candidate; the OFAT reference point. Must itself be constraint-valid. |
+| `baseline` | map | no | consumed | One starting value per candidate; the OFAT reference point and the accuracy-gate reference. Must itself be constraint-valid. |
 | `focused_grid` | `FocusedGrid` | no | consumed | Optional second-stage joint-grid spec. |
 
-Precision (e.g. `quantization`) is a top-level **branch**, never a candidate axis
-(RFC-0001:C-PRECISION-BRANCH) — each branch may have its own checkpoint and baseline.
+Weight precision (e.g. `quantization`) defines the checkpoint, so it stays in `fixed` and is
+never a candidate axis (RFC-0001:C-BRANCH). KV-cache precision MAY instead be an
+accuracy-active `candidate`; record which treatment you chose.
 
 ### `CandidateArg`
 
@@ -73,9 +78,9 @@ A constraint must set `forbid` or `require` (else it has no effect).
 | Field | Type | Required | Consumed? | Meaning |
 | --- | --- | --- | --- | --- |
 | `dataset` | str | yes | consumed | Evaluation dataset name passed to the accuracy harness. |
-| `metric` | str | no (default `accuracy`) | consumed | Score key compared against `threshold`. |
-| `threshold` | float | yes | consumed | Pass/fail bound for the metric. |
-| `direction` | `higher`\|`lower` | no (default `higher`) | consumed | `higher`: `score ≥ threshold` passes; `lower`: `score ≤ threshold`. |
+| `metric` | str | no (default `accuracy`) | consumed | Score key compared against the branch baseline. |
+| `tolerance` | float ≥ 0 | yes | consumed | Max tolerated degradation from the branch baseline metric (one-sided). |
+| `direction` | `higher`\|`lower` | no (default `higher`) | consumed | `higher`: degradation = `baseline - score`; `lower`: degradation = `score - baseline`. Passes when degradation ≤ `tolerance`. |
 
 ### `FocusedGrid`
 
@@ -99,12 +104,14 @@ slo:                          # decode-first objective; gate = per-token ITL (RF
 quality_gate:                 # accuracy acceptance gate (RFC-0001:C-QUALITY-GATE)
   dataset: gsm8k              # fast first-layer gate; gpqa_diamond (~2h) is final-only
   metric: accuracy
-  threshold: 0.95             # score >= threshold passes (direction: higher | lower)
-precision_branches:
-  - name: nvfp4
-    checkpoint: nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-NVFP4
+  tolerance: 0.02             # pass if <= 0.02 below the branch baseline (direction: higher | lower)
+branches:
+  - name: b200-fp8kv
+    hardware: 4xB200 single-node TP4
+    kv_cache_precision: fp8_e4m3
     fixed:
-      quantization: modelopt_fp4
+      quantization: modelopt_fp4      # weight precision = the checkpoint (model)
+      kv-cache-dtype: fp8_e4m3
       tensor-parallel-size: 4
     candidate:
       - name: attention-backend
@@ -128,10 +135,12 @@ never excludes a config. Because decode ITL grows with context length, long-cont
 pairs typically need a relaxed `per_token_ms` override. See [objective.md](objective.md).
 
 The optional `quality_gate` block defines the **accuracy acceptance gate**
-(RFC-0001:C-QUALITY-GATE): `dataset` + `threshold` (+ `metric`, `direction`), defined before
-the search and evaluated per branch. A config below the bar is excluded from the acceptable
-results at every stage but still recorded and flagged (`quality_pass`) for trade-off
-inspection — see [objective.md](objective.md).
+(RFC-0001:C-QUALITY-GATE): `dataset` + `tolerance` (+ `metric`, `direction`), defined before
+the search and evaluated per branch. The gate is within-branch and baseline-relative — a
+config passes only if its metric is no more than `tolerance` below its OWN branch baseline.
+A config beyond that tolerance is excluded from the acceptable results at every stage but
+still recorded and flagged (`quality_pass`) for trade-off inspection — see
+[objective.md](objective.md).
 
 Each candidate may set **`accuracy_invariant: true`** to declare that its values change
 performance but not the model's outputs (scheduling / memory-split / parallelism levers);
@@ -143,14 +152,14 @@ of re-running gsm8k on every numerically-identical permutation (RFC-0001:C-QUALI
 ## Validate
 
 ```bash
-python -m sglbench.argsearch.validate configs/nemotron_v3_ultra.yaml
-# or, after install:  argsearch-validate configs/nemotron_v3_ultra.yaml
+python -m sglbench.argsearch.validate configs/nemotron_v3_ultra_nvfp4.yaml
+# or, after install:  argsearch-validate configs/nemotron_v3_ultra_nvfp4.yaml
 ```
 
 ```
-OK configs/nemotron_v3_ultra.yaml
+OK configs/nemotron_v3_ultra_nvfp4.yaml
 model: nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-NVFP4
-  branch nvfp4: 9 candidates, 4 constraints, 7 OFAT configs
+  branch b200-fp8kv (hw=4xB200 single-node TP4, kv=fp8_e4m3): 9 candidates, 4 constraints, 7 OFAT configs
 ```
 
 Exits non-zero with the error on an invalid config. Validation enforces:
@@ -158,7 +167,7 @@ Exits non-zero with the error on an invalid config. Validation enforces:
 - every candidate in exactly one value-bucket;
 - ≤ 10 candidates (RFC-0001:C-SCOPE);
 - speculative-decode args rejected (out of scope, RFC-0001:C-SCOPE);
-- precision-defining args (`quantization`) fixed, not candidate;
+- weight-precision args (`quantization`) fixed, not candidate;
 - baseline covers every candidate with an allowed value;
 - baseline keys are all candidates (a non-candidate key is an error — put constants in `fixed`);
 - constraint-referenced args are declared in `fixed` or `candidate`.

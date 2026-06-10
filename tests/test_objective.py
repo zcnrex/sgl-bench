@@ -1,4 +1,8 @@
-"""Pareto-frontier-under-SLO tests ([[RFC-0001:C-OBJECTIVE]]): decode-first, TTFT non-gating."""
+"""Pareto-frontier-under-SLO tests ([[RFC-0001:C-OBJECTIVE]]): decode-first, TTFT non-gating.
+
+The accuracy gate is within-branch and baseline-relative ([[RFC-0001:C-QUALITY-GATE]]): a
+config passes only if its metric is no more than `tolerance` below its OWN branch baseline.
+"""
 
 import tempfile
 import unittest
@@ -9,6 +13,7 @@ from contextlib import redirect_stdout
 
 from sglbench.argsearch.objective import (
     FrontierEntry,
+    branch_baseline_score,
     build_frontier,
     gate_failed_pins,
     gate_status,
@@ -23,7 +28,8 @@ from sglbench.argsearch.objective import (
 from sglbench.argsearch.generate import _assemble, config_hash
 from sglbench.argsearch.schema import SLO, QualityGate, SearchConfig, SLOOverride
 
-GATE = QualityGate(dataset="gpqa", metric="accuracy", threshold=0.45, direction="higher")
+GATE = QualityGate(dataset="gpqa", metric="accuracy", tolerance=0.15, direction="higher")
+BASE = 0.6  # branch-baseline accuracy used as the gate reference in these tests
 
 SLO_GLOBAL = SLO(per_token_ms=40, ttft_p95_ms=5000)
 SLO_OVERRIDE = SLO(
@@ -33,14 +39,16 @@ SLO_OVERRIDE = SLO(
 )
 
 
-def rec(h, isl, osl, c, ttft_ms, per_token_ms, decode_thr, branch="nvfp4"):
+def rec(h, isl, osl, c, ttft_ms, per_token_ms, decode_thr, branch="b200-fp8kv",
+        label=None, config_label=""):
     def agg(v):
         return {"median": v, "mean": v, "n": 2}
 
     return {
         "config_hash": h,
         "branch": branch,
-        "label": h,
+        "label": label if label is not None else h,
+        "config_label": config_label,
         "workload": {"isl": isl, "osl": osl, "concurrency": c},
         "metrics": {
             "ttft_ms": agg(ttft_ms),
@@ -51,7 +59,7 @@ def rec(h, isl, osl, c, ttft_ms, per_token_ms, decode_thr, branch="nvfp4"):
 
 
 def entry(h, thr, ptok, ttft=100.0):
-    return FrontierEntry(h, "nvfp4", h, {"isl": 8192, "osl": 1024, "concurrency": 1},
+    return FrontierEntry(h, "b200-fp8kv", h, {"isl": 8192, "osl": 1024, "concurrency": 1},
                          9216, thr, ptok, ttft)
 
 
@@ -119,9 +127,9 @@ class BuildFrontierTest(unittest.TestCase):
             rec("a", 8192, 1024, 32, 3000, 20, 1600),
             rec("b", 8192, 1024, 8, 2000, 30, 800),
             rec("c", 8192, 1024, 512, 4000, 99, 5000),
-            rec("d", 8192, 1024, 1, 3000, 25, 1200, branch="fp8"),
+            rec("d", 8192, 1024, 1, 3000, 25, 1200, branch="b200-bf16kv"),
         ]
-        passing, frontier = build_frontier(records, SLO_GLOBAL, branch="nvfp4")
+        passing, frontier = build_frontier(records, SLO_GLOBAL, branch="b200-fp8kv")
         hashes = {e.config_hash for e in passing}
         self.assertNotIn("c", hashes)
         self.assertNotIn("d", hashes)
@@ -146,8 +154,10 @@ class BuildFrontierTest(unittest.TestCase):
             self.assertEqual(len(Path(path).read_text().splitlines()), 1)
 
 
-def gated_rec(h, *, ptok=20, decode_thr=1600, accuracy=None, quality_pass=None, branch="nvfp4"):
-    r = rec(h, 8192, 1024, 32, 3000, ptok, decode_thr, branch=branch)
+def gated_rec(h, *, ptok=20, decode_thr=1600, accuracy=None, quality_pass=None,
+              branch="b200-fp8kv", label=None, config_label=""):
+    r = rec(h, 8192, 1024, 32, 3000, ptok, decode_thr, branch=branch, label=label,
+            config_label=config_label)
     if accuracy is not None:
         r["accuracy"] = {"accuracy": accuracy}
     if quality_pass is not None:
@@ -156,47 +166,79 @@ def gated_rec(h, *, ptok=20, decode_thr=1600, accuracy=None, quality_pass=None, 
 
 
 class QualityGateTest(unittest.TestCase):
-    def test_passes_higher_direction(self):
-        self.assertTrue(GATE.passes(0.45))
-        self.assertTrue(GATE.passes(0.9))
-        self.assertFalse(GATE.passes(0.44))
-        self.assertFalse(GATE.passes(None))
+    def test_passes_within_tolerance_below_baseline(self):
+        self.assertTrue(GATE.passes(BASE, BASE))          # at baseline
+        self.assertTrue(GATE.passes(0.9, BASE))           # above baseline
+        self.assertTrue(GATE.passes(0.45, BASE))          # exactly tolerance below
+        self.assertFalse(GATE.passes(0.44, BASE))         # beyond tolerance
+        self.assertFalse(GATE.passes(None, BASE))         # missing score
+        self.assertFalse(GATE.passes(0.6, None))          # missing baseline
 
     def test_passes_lower_direction(self):
-        ppl = QualityGate(dataset="d", metric="perplexity", threshold=10.0, direction="lower")
-        self.assertTrue(ppl.passes(9.5))
-        self.assertFalse(ppl.passes(10.5))
+        ppl = QualityGate(dataset="d", metric="perplexity", tolerance=1.0, direction="lower")
+        self.assertTrue(ppl.passes(9.5, 9.0))             # 0.5 worse, within 1.0
+        self.assertFalse(ppl.passes(10.5, 9.0))           # 1.5 worse, beyond 1.0
 
     def test_no_gate_admits_all(self):
-        self.assertTrue(passes_quality_gate(gated_rec("a"), None))
+        self.assertTrue(passes_quality_gate(gated_rec("a"), None, None))
 
     def test_stamped_flag_is_trusted(self):
-        self.assertTrue(passes_quality_gate(gated_rec("a", quality_pass=True), GATE))
-        self.assertFalse(passes_quality_gate(gated_rec("a", quality_pass=False), GATE))
+        self.assertTrue(passes_quality_gate(gated_rec("a", quality_pass=True), GATE, BASE))
+        self.assertFalse(passes_quality_gate(gated_rec("a", quality_pass=False), GATE, BASE))
 
-    def test_recompute_from_accuracy_when_no_flag(self):
-        self.assertTrue(record_quality_pass(gated_rec("a", accuracy=0.6), GATE))
-        self.assertFalse(record_quality_pass(gated_rec("a", accuracy=0.3), GATE))
+    def test_recompute_relative_to_baseline_when_no_flag(self):
+        self.assertTrue(record_quality_pass(gated_rec("a", accuracy=0.5), GATE, BASE))
+        self.assertFalse(record_quality_pass(gated_rec("a", accuracy=0.3), GATE, BASE))
 
     def test_missing_accuracy_fails(self):
-        self.assertFalse(passes_quality_gate(gated_rec("a"), GATE))
+        self.assertFalse(passes_quality_gate(gated_rec("a"), GATE, BASE))
+
+    def test_missing_baseline_fails_unflagged(self):
+        self.assertFalse(passes_quality_gate(gated_rec("a", accuracy=0.6), GATE, None))
+
+
+class BranchBaselineScoreTest(unittest.TestCase):
+    def test_reads_same_branch_baseline_label(self):
+        records = [
+            gated_rec("h1", accuracy=0.62, config_label="baseline"),
+            gated_rec("h2", accuracy=0.30, config_label="attention-backend=flashinfer"),
+            gated_rec("o", accuracy=0.99, config_label="baseline", branch="b200-bf16kv"),
+        ]
+        self.assertEqual(branch_baseline_score(records, "b200-fp8kv", GATE), 0.62)
+        self.assertEqual(branch_baseline_score(records, "b200-bf16kv", GATE), 0.99)
+
+    def test_absent_baseline_is_none(self):
+        records = [gated_rec("h2", accuracy=0.3, config_label="ofat")]
+        self.assertIsNone(branch_baseline_score(records, "b200-fp8kv", GATE))
 
 
 class GateFrontierTest(unittest.TestCase):
-    GOOD = dict(ptok=20, decode_thr=1600, quality_pass=True)
-    FAST_BAD = dict(ptok=15, decode_thr=900, quality_pass=False)
-
-    def test_gate_failing_excluded_from_frontier(self):
-        records = [gated_rec("good", **self.GOOD), gated_rec("fast-bad", **self.FAST_BAD)]
-        _, frontier = build_frontier(records, SLO_GLOBAL, gate=GATE)
+    def test_gate_failing_excluded_via_baseline(self):
+        records = [
+            gated_rec("baseline", ptok=22, decode_thr=1500, accuracy=0.60, config_label="baseline"),
+            gated_rec("good", ptok=20, decode_thr=1600, accuracy=0.55),
+            gated_rec("fast-bad", ptok=15, decode_thr=900, accuracy=0.10),
+        ]
+        _, frontier = build_frontier(records, SLO_GLOBAL, branch="b200-fp8kv", gate=GATE)
         hashes = {e.config_hash for e in frontier}
         self.assertIn("good", hashes)
         self.assertNotIn("fast-bad", hashes)
 
     def test_no_gate_keeps_both(self):
-        records = [gated_rec("good", **self.GOOD), gated_rec("fast-bad", **self.FAST_BAD)]
+        records = [
+            gated_rec("good", ptok=20, decode_thr=1600, accuracy=0.55),
+            gated_rec("fast-bad", ptok=15, decode_thr=900, accuracy=0.10),
+        ]
         _, frontier = build_frontier(records, SLO_GLOBAL, gate=None)
         self.assertEqual({e.config_hash for e in frontier}, {"good", "fast-bad"})
+
+    def test_cross_branch_never_co_ranked(self):
+        records = [
+            gated_rec("fp8kv", ptok=20, decode_thr=1600),
+            gated_rec("bf16kv", ptok=10, decode_thr=4000, branch="b200-bf16kv"),
+        ]
+        _, frontier = build_frontier(records, SLO_GLOBAL, branch="b200-fp8kv")
+        self.assertEqual({e.config_hash for e in frontier}, {"fp8kv"})
 
     def test_all_fail_yields_empty_frontier(self):
         records = [gated_rec("bad", quality_pass=False)]
@@ -214,7 +256,7 @@ class GateFailedPinsTest(unittest.TestCase):
     def setUpClass(cls):
         cls.branch = SearchConfig.model_validate({
             "model": "m",
-            "precision_branches": [{
+            "branches": [{
                 "name": "b",
                 "fixed": {"quantization": "modelopt_fp4"},
                 "candidate": [
@@ -249,23 +291,27 @@ class GateFailedPinsTest(unittest.TestCase):
 class GateStatusTest(unittest.TestCase):
     def test_no_gate_is_na(self):
         e = to_entry(gated_rec("a", accuracy=0.6))
-        self.assertEqual(gate_status(e, None), ("n-a", None))
+        self.assertEqual(gate_status(e, None, None), ("n-a", None))
 
     def test_stamped_pass_and_fail(self):
         passed = to_entry(gated_rec("a", accuracy=0.6, quality_pass=True))
         failed = to_entry(gated_rec("b", accuracy=0.1, quality_pass=False))
-        self.assertEqual(gate_status(passed, GATE), ("PASS", 0.6))
-        self.assertEqual(gate_status(failed, GATE), ("FAIL", 0.1))
+        self.assertEqual(gate_status(passed, GATE, BASE), ("PASS", 0.6))
+        self.assertEqual(gate_status(failed, GATE, BASE), ("FAIL", 0.1))
 
     def test_unmeasured_is_na_not_fail(self):
         e = to_entry(gated_rec("a"))
-        self.assertEqual(gate_status(e, GATE), ("n-a", None))
+        self.assertEqual(gate_status(e, GATE, BASE), ("n-a", None))
 
-    def test_recompute_from_accuracy(self):
-        good = to_entry(gated_rec("a", accuracy=0.6))
+    def test_no_baseline_is_na(self):
+        e = to_entry(gated_rec("a", accuracy=0.6))
+        self.assertEqual(gate_status(e, GATE, None), ("n-a", None))
+
+    def test_recompute_relative_to_baseline(self):
+        good = to_entry(gated_rec("a", accuracy=0.55))
         bad = to_entry(gated_rec("b", accuracy=0.1))
-        self.assertEqual(gate_status(good, GATE)[0], "PASS")
-        self.assertEqual(gate_status(bad, GATE)[0], "FAIL")
+        self.assertEqual(gate_status(good, GATE, BASE)[0], "PASS")
+        self.assertEqual(gate_status(bad, GATE, BASE)[0], "FAIL")
 
 
 CONFIG_YAML = """\
@@ -276,10 +322,10 @@ slo:
 quality_gate:
   dataset: gpqa
   metric: accuracy
-  threshold: 0.45
+  tolerance: 0.15
   direction: higher
-precision_branches:
-  - name: nvfp4
+branches:
+  - name: b200-fp8kv
 """
 
 
@@ -294,7 +340,7 @@ class InspectMainTest(unittest.TestCase):
 
     def _records(self):
         return [
-            gated_rec("good", ptok=20, decode_thr=1600, accuracy=0.6),
+            gated_rec("baseline", ptok=22, decode_thr=1500, accuracy=0.6, config_label="baseline"),
             gated_rec("fast-bad", ptok=15, decode_thr=900, accuracy=0.1),
             gated_rec("unmeasured", ptok=18, decode_thr=1200),
         ]
@@ -309,7 +355,7 @@ class InspectMainTest(unittest.TestCase):
         self.assertEqual(rc, 0)
         self.assertIn("INSPECTION VIEW", out)
         self.assertIn("eligible(ignoring gate)=3", out)
-        for h in ("good", "fast-bad", "unmeasured"):
+        for h in ("baseline", "fast-bad", "unmeasured"):
             self.assertIn(h, out)
 
     def test_inspect_annotates_each_row(self):
@@ -338,7 +384,7 @@ class InspectMainTest(unittest.TestCase):
             with redirect_stdout(buf):
                 main(["--config", cfg, "--results", res, "--out", str(out_path)])
             written = out_path.read_text()
-        self.assertIn("good", written)
+        self.assertIn("baseline", written)
         self.assertNotIn("fast-bad", written)
         self.assertNotIn("unmeasured", written)
 

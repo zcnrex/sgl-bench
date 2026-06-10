@@ -19,7 +19,7 @@ meaningful.
 ## Run it
 
 ```bash
-argsearch-compare --config configs/nemotron_v3_ultra_nvfp4.yaml --branch nvfp4 \
+argsearch-compare --config configs/nemotron_v3_ultra_nvfp4.yaml --branch b200-fp8kv \
     --results out/<model>/runs/bench_one_batch_server/<env>/results.jsonl
 # or: python -m sglbench.argsearch.compare --config ... --branch ... --results ...
 ```
