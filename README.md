@@ -34,10 +34,18 @@ python -m sglbench.argsearch --config configs/nemotron_v3_ultra.yaml --branch nv
 python -m sglbench.argsearch --config configs/nemotron_v3_ultra.yaml --branch nvfp4 \
     --mode ofat --save
 
-# 4. Run the live search on a server (launch -> bench -> frontier)
+# 4. Run the live search — ON THE GPU HOST (it launches the SGLang server + benches it)
 argsearch-run --config configs/nemotron_v3_ultra.yaml --branch nvfp4 --mode ofat \
     --isl-osl 8192x256 --concurrency 1 8 32 --port 40000 --frontier
 ```
+
+Steps 1–3 are GPU-free and run anywhere (laptop). **Step 4 must run where the GPUs / SGLang /
+model are** — `argsearch-run` spawns `sglang.launch_server` as a subprocess and benches it
+over localhost. You don't install it on your laptop for this: drive it from your laptop with
+**`scripts/devbox_sweep.sh …`**, which rsyncs the repo to the devbox, `pip install -e`'s it
+there, and runs `argsearch-run` **detached** on the devbox (resilient to ssh drops). Or `ssh`
+into the devbox and run `argsearch-run` directly. A local install is only for the GPU-free
+stages and `argsearch-run --dry-run` (prints the launch/bench commands without running them).
 
 The focused grid's admitted args + rationale are declared in the config's `focused_grid`
 block (not on the CLI). `argsearch-run` drives the whole outer/inner loop against a live
@@ -45,8 +53,7 @@ SGLang server — concrete launcher (`SGLangServerManager`) and bench transports
 (`bench_one_batch_server` anchor, `bench_serving` percentile-ITL) are implemented and
 hardware-validated; it streams `results.jsonl` per point and optionally runs the gsm8k
 accuracy gate (`--gsm8k-examples`). See [docs/usage/run.md](docs/usage/run.md). For library
-use, `run_search(points, workload, manager)` is the same loop. To run on a RadixArk devbox,
-use `scripts/devbox_sweep.sh` (detached, resilient).
+use, `run_search(points, workload, manager)` is the same loop.
 
 ## Documentation
 
