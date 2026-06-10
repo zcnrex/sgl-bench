@@ -1,0 +1,102 @@
+#:schema ../schema/adr.schema.json
+
+[govctl]
+id = "ADR-0007"
+title = "Run-scoped content-addressed output layout; human-readable generated-config paths"
+status = "accepted"
+date = "2026-06-10"
+refs = [
+    "RFC-0001",
+    "RFC-0001:C-RUN-OUTPUT",
+    "RFC-0001:C-MEASUREMENT",
+    "RFC-0002:C-RANK-VALIDITY",
+]
+
+[content]
+context = """
+`argsearch-run` opened its `results.jsonl` in truncate mode under a shared `--out`, so a
+second run — or the same config at a different mode/role — silently overwrote the previous
+run's measured results, destroying provenance. Generated configs were written flat as
+`out/<config_hash>.json` plus an `index.jsonl`; the human label lived only inside the JSON,
+so the directory was an opaque, unordered pile of hashes.
+
+[[RFC-0001:C-RUN-OUTPUT]] (drafted alongside this ADR) makes the obligations normative: a run
+is identified by the content of its defining inputs (config content, branch, search stage,
+workload, transport, gate, and the execution-environment build), the same inputs MUST resolve
+to the same run identity, different runs MUST NOT share an output location, and each run carries
+a manifest. [[RFC-0001:C-MEASUREMENT]] keeps the config content hash as the per-record
+provenance identity (so any naming scheme must retain it), and [[RFC-0002:C-RANK-VALIDITY]]
+scopes rankings to the build. This ADR records the concrete on-disk layout that satisfies those
+obligations."""
+decision = """
+Make measurement reuse content-addressed, collocate all output for a model under one
+directory, and use human-readable paths.
+
+- **Measurement identity & reuse.** A measurement is keyed by `(config identity, workload
+  point, benchmark tool, execution environment)`. A search reuses a matching recorded
+  measurement by default and measures only the identities not yet present; `--force`
+  re-measures. Extending a search (more concurrencies, more candidates) is incremental.
+- **One directory per model.** All output for a model lives under `out/<model>/`, where
+  `<model>` is a filesystem-safe slug of the served checkpoint (`branch.checkpoint`, falling
+  back to the config `model`). The checkpoint name already encodes the precision (e.g.
+  `…-NVFP4`, `…-BF16`), so **no separate precision-branch segment appears in the path**.
+  - Results: `out/<model>/runs/<transport>/<env>/{results.jsonl, manifest.json}` — `<transport>`
+    is the bench tool name (`bench_one_batch_server` or `bench_serving`); `<env>` is a short
+    digest of the execution environment (SGLang commit + key library versions + cluster
+    networking env, per [[RFC-0001:C-MEASUREMENT]]). A different transport or environment is a
+    different directory, so non-comparable numbers are never mixed.
+  - Configs: `out/<model>/configs/<mode>/<NN>-<label-slug>-<hash8>.json` + a per-mode
+    `index.jsonl`. The full content hash stays the in-record provenance identity
+    ([[RFC-0001:C-MEASUREMENT]]); `NN` orders, `hash8` disambiguates.
+
+The timestamp is metadata only, never part of any identity."""
+consequences = """
+- Everything for a model is collocated under `out/<model>/` — inputs (`configs/`) and results
+  (`runs/`) side by side, easy to archive or share as a unit.
+- The precision branch is dropped from the path because the checkpoint name carries the
+  precision; branches that happen to share a checkpoint accumulate in the same model directory,
+  distinguished by the per-record config identity — consistent with the measurement-level
+  identity (branch is not part of measurement identity).
+- Extending a search is incremental: adding concurrencies or candidate values measures only the
+  new `(config, point)` measurements and reuses the rest.
+- Re-running the same search is idempotent and reproducible — the same measured point resolves
+  to the same identity and is reused, not duplicated; `--force` refreshes.
+- A SGLang/kernel/library upgrade lands in a new `<build>` directory, so old and new numbers are
+  never conflated — the revision-scoping of [[RFC-0002:C-RANK-VALIDITY]] falls out of the layout.
+- The objective consumes one run directory's `results.jsonl` (a single transport+build) or globs
+  across them; the manifest reconstructs exactly what produced a result set.
+- Cost: the `<model>` and `<build>` slugs and the measurement identity must be canonicalized so
+  the same model/build/inputs resolve identically across machines; reuse-by-default could reuse a
+  measurement the operator wanted refreshed (mitigated by `--force` and by build being in the key).
+- Migration: `argsearch-run`'s default `--out`, `generate --save`'s layout, and
+  `scripts/devbox_sweep.sh`'s fetch move to the new paths; pre-existing flat `out/` artifacts are
+  left in place, not relocated."""
+
+[[content.alternatives]]
+text = "Measurement-identity reuse + collocated per-model layout. A measurement is keyed by (config identity, workload point, benchmark tool, execution environment); reuse matching measurements by default (--force re-measures), so adding points/candidates is incremental. All output for a model is collocated under out/<model>/: out/<model>/configs/<mode>/<NN>-<label>-<hash8>.json and out/<model>/runs/<transport>/<env>/{results.jsonl, manifest.json}. No precision-branch path segment; the content hash stays the in-record provenance id."
+status = "accepted"
+
+[[content.alternatives]]
+text = "Closed per-invocation run identity (hash all defining inputs incl. the workload set)"
+status = "rejected"
+rejection_reason = "Adding a workload point or candidate changes the hashed set, yields a new identity, and forces redoing the whole sweep — it defeats the incremental extension the user needs."
+
+[[content.alternatives]]
+text = "Keep the precision branch as an explicit path segment (out/<model>/<branch>/...)"
+status = "rejected"
+rejection_reason = "Redundant: the served checkpoint name already encodes the precision (e.g. -NVFP4 / -BF16), and branch is not part of measurement identity — the per-record config identity already disambiguates branches that share a checkpoint. The extra segment adds depth without distinguishing power."
+
+[[content.alternatives]]
+text = "Timestamp-based run directories"
+status = "rejected"
+rejection_reason = "A timestamp is not reproducible: the same search resolves to a different directory each invocation and accumulates duplicates, so it cannot be located deterministically."
+
+[[content.alternatives]]
+text = "Single append-only results.jsonl without build/transport isolation (run_id per record)"
+status = "rejected"
+rejection_reason = "Mixes non-comparable numbers (different environments/transports) in one file; every consumer must filter, and there is no per-environment isolation for [[RFC-0002:C-RANK-VALIDITY]]."
+
+[[content.alternatives]]
+text = "Flat hash filenames for generated configs (out/<hash>.json)"
+status = "rejected"
+rejection_reason = "Opaque, unordered, unnavigable; the readable label exists only inside index.jsonl."

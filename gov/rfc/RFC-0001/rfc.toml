@@ -3,13 +3,13 @@
 [govctl]
 id = "RFC-0001"
 title = "Large-Model SGLang Server-Arg Search Methodology"
-version = "0.4.0"
+version = "0.5.0"
 status = "normative"
 phase = "test"
 owners = ["@Chunan Zeng"]
 created = "2026-06-09"
-updated = "2026-06-09"
-signature = "626b04f9e9163fb12a4753e67e30e4d2ae3a861d8292c80d3a675ea9329cba05"
+updated = "2026-06-10"
+signature = "f66916814d1289ee3d697c4a0909e6e92f183ba932b931f5e5897a8a0a4cc3fc"
 
 [[sections]]
 title = "Summary"
@@ -28,7 +28,13 @@ clauses = [
     "clauses/C-MEASUREMENT.toml",
     "clauses/C-BASELINE-ANCHOR.toml",
     "clauses/C-WORKLOAD-STAGING.toml",
+    "clauses/C-RUN-OUTPUT.toml",
 ]
+
+[[changelog]]
+version = "0.5.0"
+date = "2026-06-10"
+notes = "Add C-RUN-OUTPUT: content-addressed measurement identity + reuse (incremental sweeps), execution-environment isolation, and a per-result-set manifest"
 
 [[changelog]]
 version = "0.4.0"
