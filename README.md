@@ -3,7 +3,7 @@
 **Find the fastest SGLang server configuration for a large model under a latency target,
 without regressing accuracy.**
 
-Large models expose many restart-required server flags: tensor, expert, and data
+Large models expose many [restart-required server flags](#restart-required-arg): tensor, expert, and data
 parallelism; attention and Mamba/SSM kernel backends; quantization; KV-cache dtype; static
 memory fraction; CUDA graph settings; and chunked prefill sizes. Each combination requires a
 server relaunch, weight load, and warmup before measurement, so a brute-force grid over
@@ -25,12 +25,30 @@ are recorded, but excluded from rankings.
 | Measure each point | Run warmup and repeats; record provenance such as commit, library versions, and env. |
 | Rank the frontier | Compare decode throughput vs per-token latency after SLO and accuracy gates. |
 
+The live search is a nested loop:
+
+```text
+outer loop: for each restart-required config
+  launch one SGLang server
+
+  inner loop: for each workload point
+    measure ISL x OSL x concurrency against that live server
+
+  stop the server
+```
+
+The [outer loop](#outer-loop) changes server args that require a relaunch. The
+[inner loop](#inner-loop) changes request shape and concurrency while reusing the same live
+server.
+
 ## Glossary
 
 | Term | Meaning |
 | --- | --- |
 | <a id="restart-required-arg"></a>**restart-required arg** | A server flag that needs a relaunch to change, such as TP size or quantization. |
 | <a id="workload-axes"></a>**workload axes** | Runtime workload dimensions, such as input length, output length, and concurrency, that are swept against one live server. |
+| <a id="outer-loop"></a>**outer loop** | The search loop over restart-required configs. Each iteration launches SGLang with one server-arg combination, measures it, then stops it. |
+| <a id="inner-loop"></a>**inner loop** | The workload loop inside one live server run. It measures each input/output length and concurrency point without changing restart-required server args. |
 | <a id="ofat"></a>**OFAT** | One-factor-at-a-time: vary a single candidate around a known-good baseline to see which args actually move performance before any joint grid. |
 | <a id="focused-grid"></a>**focused grid** | A small joint grid over only the args that showed sensitivity *and* plausibly interact, such as coupled pairs like `ep-size`/`moe-a2a-backend`. |
 | <a id="decode-first-objective"></a>**decode-first objective** | Rank by steady-state *decode* throughput vs per-token (inter-token) latency at a fixed context length. The SLO gate is decode latency; TTFT is report-only. |
