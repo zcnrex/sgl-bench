@@ -98,5 +98,48 @@ class LiveRunTest(unittest.TestCase):
             run.SGLangServerManager = orig
 
 
+class GateWiringTest(unittest.TestCase):
+    def _run_with_eval(self, accuracy, out_dir):
+        orig_mgr, orig_ev = run.SGLangServerManager, run.GSM8KEvaluator
+        run.SGLangServerManager = FakeManager
+
+        class FakeEval:
+            def __init__(self, base_url, **kw):
+                pass
+
+            def evaluate(self):
+                return {"accuracy": accuracy}
+
+        run.GSM8KEvaluator = FakeEval
+        try:
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                rc = run.main([
+                    "--config", str(CONFIG), "--branch", "nvfp4", "--mode", "ofat",
+                    "--limit-configs", "1", "--concurrency", "1", "--isl-osl", "8192x256",
+                    "--repeats", "2", "--gsm8k-examples", "20", "--out", out_dir, "--frontier",
+                ])
+            return rc, buf.getvalue()
+        finally:
+            run.SGLangServerManager, run.GSM8KEvaluator = orig_mgr, orig_ev
+
+    def test_passing_accuracy_stamps_and_admits(self):
+        with tempfile.TemporaryDirectory() as d:
+            rc, out = self._run_with_eval(0.97, d)
+            self.assertEqual(rc, 0)
+            rec = json.loads((Path(d) / "results.jsonl").read_text().splitlines()[0])
+            self.assertEqual(rec["accuracy"], {"accuracy": 0.97})
+            self.assertTrue(rec["quality_pass"])
+            self.assertIn("eligible=1", out)
+
+    def test_failing_accuracy_excluded(self):
+        with tempfile.TemporaryDirectory() as d:
+            rc, out = self._run_with_eval(0.50, d)
+            self.assertEqual(rc, 0)
+            rec = json.loads((Path(d) / "results.jsonl").read_text().splitlines()[0])
+            self.assertFalse(rec["quality_pass"])
+            self.assertIn("eligible=0", out)
+
+
 if __name__ == "__main__":
     unittest.main()

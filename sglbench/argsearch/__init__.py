@@ -38,10 +38,13 @@ from .driver import (
 )
 from .sglang_adapter import (
     BenchOneBatchClient,
+    GSM8KEvaluator,
     SGLangServerManager,
     SGLangSession,
     build_bench_cmd,
+    build_gsm8k_cmd,
     build_launch_cmd,
+    parse_gsm8k_metrics,
     parse_result_jsonl,
     record_to_metrics,
 )
@@ -89,10 +92,13 @@ __all__ = [
     "workload_points",
     "write_results",
     "BenchOneBatchClient",
+    "GSM8KEvaluator",
     "SGLangServerManager",
     "SGLangSession",
     "build_bench_cmd",
+    "build_gsm8k_cmd",
     "build_launch_cmd",
+    "parse_gsm8k_metrics",
     "parse_result_jsonl",
     "record_to_metrics",
     "FrontierEntry",

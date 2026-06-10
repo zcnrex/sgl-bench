@@ -1,0 +1,38 @@
+#:schema ../schema/work.schema.json
+
+[govctl]
+id = "WI-2026-06-09-012"
+title = "Concrete GSM8K AccuracyEvaluator (wraps sgl-eval) + wire accuracy gate into run CLI"
+status = "done"
+created = "2026-06-09"
+started = "2026-06-09"
+completed = "2026-06-09"
+refs = ["RFC-0001"]
+
+[content]
+description = "Add the concrete AccuracyEvaluator that realizes the C-QUALITY-GATE path on real hardware: a GSM8KEvaluator wrapping the sgl-eval CLI (run gsm8k --base-url .../v1 --num-examples N --out-dir), parsing aggregate.score from metrics.json into {accuracy: score}. Wire it into the argsearch-run CLI so a run can evaluate the gsm8k first-layer gate per config, stamp accuracy + quality_pass on records, and apply the gate in the frontier. Command construction + metrics parsing are pure/GPU-free-tested; the eval subprocess is injectable."
+
+[[content.acceptance_criteria]]
+text = "govctl check passes"
+status = "done"
+category = "chore"
+
+[[content.acceptance_criteria]]
+text = "GSM8KEvaluator (AccuracyEvaluator) wraps sgl-eval; build_gsm8k_cmd + parse_gsm8k_metrics are pure functions"
+status = "done"
+category = "added"
+
+[[content.acceptance_criteria]]
+text = "argsearch-run gains a gsm8k accuracy-eval option that enables the gate (gate + per-config evaluate threaded into run_search)"
+status = "done"
+category = "added"
+
+[[content.acceptance_criteria]]
+text = "GPU-free tests cover command construction, metrics.json parsing, and the run-CLI gate wiring with an injected evaluator"
+status = "done"
+category = "chore"
+
+[[content.acceptance_criteria]]
+text = "validated on the B300 — a live gsm8k eval yields a real accuracy, stamps quality_pass, and the gate admits/excludes the config accordingly"
+status = "done"
+category = "chore"

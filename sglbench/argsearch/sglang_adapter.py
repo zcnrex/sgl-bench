@@ -304,3 +304,119 @@ class SGLangServerManager:
             run_bench=self._run_bench,
         )
         return SGLangSession(proc, client)
+
+
+GSM8K_DEFAULT_EXAMPLES = 200
+GSM8K_DEFAULT_THREADS = 32
+
+
+def build_gsm8k_cmd(
+    base_url: str,
+    out_dir: str,
+    *,
+    name: str = "gsm8k",
+    num_examples: int = GSM8K_DEFAULT_EXAMPLES,
+    num_threads: int = GSM8K_DEFAULT_THREADS,
+    max_tokens: int | None = None,
+    temperature: float | None = None,
+    model: str | None = None,
+    extra=(),
+) -> list[str]:
+    """`sgl-eval run` command for an accuracy-gate eval ([[RFC-0001:C-QUALITY-GATE]]).
+
+    sgl-eval speaks an OpenAI-compatible endpoint, so the base URL is normalized to end in
+    /v1; results land in a timestamped run folder under out_dir as metrics.json.
+    """
+    url = base_url.rstrip("/")
+    if not url.endswith("/v1"):
+        url = url + "/v1"
+    cmd = [
+        "sgl-eval", "run", name,
+        "--base-url", url,
+        "--num-examples", str(num_examples),
+        "--num-threads", str(num_threads),
+        "--out-dir", out_dir,
+        "--no-dump-predictions",
+    ]
+    if max_tokens is not None:
+        cmd += ["--max-tokens", str(max_tokens)]
+    if temperature is not None:
+        cmd += ["--temperature", str(temperature)]
+    if model is not None:
+        cmd += ["--model", model]
+    cmd += list(extra)
+    return cmd
+
+
+def parse_gsm8k_metrics(text: str, metric: str = "accuracy") -> dict[str, float]:
+    """Map an sgl-eval metrics.json into the gate metric vocabulary.
+
+    The headline accuracy is `aggregate.score`; falls back to aggregate[metric]/mean.
+    """
+    data = json.loads(text)
+    agg = data.get("aggregate", {})
+    for k in ("score", metric, "accuracy", "mean"):
+        if k in agg:
+            return {metric: float(agg[k])}
+    raise ValueError("sgl-eval metrics.json has no aggregate score")
+
+
+def _latest_metrics_json(out_dir: str) -> Path:
+    paths = sorted(Path(out_dir).glob("**/metrics.json"), key=lambda p: p.stat().st_mtime)
+    if not paths:
+        raise FileNotFoundError(f"no metrics.json under {out_dir}")
+    return paths[-1]
+
+
+def _default_run_eval(cmd: list[str]) -> None:
+    subprocess.run(cmd, check=True)
+
+
+class GSM8KEvaluator:
+    """AccuracyEvaluator over `sgl-eval run gsm8k` ([[RFC-0001:C-QUALITY-GATE]])."""
+
+    tool = "sgl-eval:gsm8k"
+
+    def __init__(
+        self,
+        base_url: str,
+        *,
+        metric: str = "accuracy",
+        num_examples: int = GSM8K_DEFAULT_EXAMPLES,
+        num_threads: int = GSM8K_DEFAULT_THREADS,
+        max_tokens: int | None = None,
+        temperature: float | None = None,
+        model: str | None = None,
+        out_dir: str | None = None,
+        run_eval: Callable[[list[str]], None] = _default_run_eval,
+    ) -> None:
+        self.base_url = base_url
+        self.metric = metric
+        self.num_examples = num_examples
+        self.num_threads = num_threads
+        self.max_tokens = max_tokens
+        self.temperature = temperature
+        self.model = model
+        self.out_dir = out_dir
+        self._run_eval = run_eval
+
+    def evaluate(self) -> dict[str, float]:
+        out = self.out_dir
+        tmp = None
+        if out is None:
+            tmp = tempfile.TemporaryDirectory()
+            out = tmp.name
+        try:
+            cmd = build_gsm8k_cmd(
+                self.base_url, out,
+                num_examples=self.num_examples,
+                num_threads=self.num_threads,
+                max_tokens=self.max_tokens,
+                temperature=self.temperature,
+                model=self.model,
+            )
+            self._run_eval(cmd)
+            return parse_gsm8k_metrics(Path(_latest_metrics_json(out)).read_text(), self.metric)
+        finally:
+            if tmp is not None:
+                tmp.cleanup()

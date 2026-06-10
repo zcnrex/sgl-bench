@@ -14,7 +14,12 @@ import sys
 from .driver import run_search, workload_points, write_results
 from .generate import generate_grid, generate_ofat, load_config
 from .objective import build_frontier
-from .sglang_adapter import SGLangServerManager, build_bench_cmd, build_launch_cmd
+from .sglang_adapter import (
+    GSM8KEvaluator,
+    SGLangServerManager,
+    build_bench_cmd,
+    build_launch_cmd,
+)
 
 DEFAULT_OUT_DIR = "out"
 
@@ -55,6 +60,8 @@ def main(argv=None) -> int:
     p.add_argument("--host", default="127.0.0.1")
     p.add_argument("--port", type=int, default=30000)
     p.add_argument("--repeats", type=int, default=2, help="Measured repeats per workload point (>=2)")
+    p.add_argument("--gsm8k-examples", type=int, default=0, help="Run gsm8k accuracy gate per config with N examples (0=disabled)")
+    p.add_argument("--gsm8k-threads", type=int, default=32, help="Concurrent threads for the gsm8k eval")
     p.add_argument("--launch-timeout", type=float, default=1800.0, help="Seconds to wait for /health")
     p.add_argument("--out", default=DEFAULT_OUT_DIR, help="Output dir for results.jsonl")
     p.add_argument("--frontier", action="store_true", help="Build and print the frontier after the run")
@@ -82,7 +89,24 @@ def main(argv=None) -> int:
         return 0
 
     manager = SGLangServerManager(model, host=a.host, port=a.port, launch_timeout_s=a.launch_timeout)
-    results = run_search(points, workload, manager, repeats=a.repeats)
+
+    gate = None
+    evaluate = None
+    if a.gsm8k_examples > 0:
+        if cfg.quality_gate is None:
+            p.error("--gsm8k-examples set but config defines no quality_gate (C-QUALITY-GATE)")
+        gate = cfg.quality_gate
+        base_url = f"http://{a.host}:{a.port}"
+        evaluator = GSM8KEvaluator(
+            base_url,
+            metric=gate.metric,
+            num_examples=a.gsm8k_examples,
+            num_threads=a.gsm8k_threads,
+        )
+        evaluate = lambda session: evaluator.evaluate()
+        print(f"accuracy gate: gsm8k x{a.gsm8k_examples}  ({gate.metric} >= {gate.threshold})")
+
+    results = run_search(points, workload, manager, repeats=a.repeats, gate=gate, evaluate=evaluate)
     out = write_results(results, a.out)
     print(f"wrote {len(results)} records to {out}")
 

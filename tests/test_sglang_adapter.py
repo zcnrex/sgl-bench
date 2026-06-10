@@ -8,10 +8,13 @@ from sglbench.argsearch.driver import ServerManager, ServerSession
 from sglbench.argsearch.measure import BenchClient, WorkloadPoint, measure_point
 from sglbench.argsearch.sglang_adapter import (
     BenchOneBatchClient,
+    GSM8KEvaluator,
     SGLangServerManager,
     SGLangSession,
     build_bench_cmd,
+    build_gsm8k_cmd,
     build_launch_cmd,
+    parse_gsm8k_metrics,
     parse_result_jsonl,
     record_to_metrics,
     wait_until_ready,
@@ -206,6 +209,60 @@ class ProtocolConformanceTest(unittest.TestCase):
         session = mgr.launch({})
         self.assertIsInstance(session, ServerSession)
         self.assertIsInstance(session.client, BenchClient)
+
+
+class GSM8KCmdTest(unittest.TestCase):
+    def test_base_url_normalized_to_v1(self):
+        cmd = build_gsm8k_cmd("http://127.0.0.1:40000", "/tmp/o", num_examples=40)
+        self.assertIn("sgl-eval", cmd)
+        self.assertIn("gsm8k", cmd)
+        i = cmd.index("--base-url")
+        self.assertEqual(cmd[i + 1], "http://127.0.0.1:40000/v1")
+        self.assertIn("--num-examples", cmd)
+        self.assertEqual(cmd[cmd.index("--num-examples") + 1], "40")
+
+    def test_v1_not_double_appended(self):
+        cmd = build_gsm8k_cmd("http://h:1/v1", "/tmp/o")
+        self.assertEqual(cmd[cmd.index("--base-url") + 1], "http://h:1/v1")
+
+    def test_optional_flags_omitted_when_none(self):
+        cmd = build_gsm8k_cmd("http://h:1", "/tmp/o")
+        self.assertNotIn("--max-tokens", cmd)
+        self.assertNotIn("--temperature", cmd)
+
+
+class GSM8KParseTest(unittest.TestCase):
+    def test_score_mapped_to_accuracy(self):
+        text = json.dumps({"aggregate": {"score": 0.96, "pass@1": 0.96}})
+        self.assertEqual(parse_gsm8k_metrics(text), {"accuracy": 0.96})
+
+    def test_fallback_to_accuracy_key(self):
+        text = json.dumps({"aggregate": {"accuracy": 0.91}})
+        self.assertEqual(parse_gsm8k_metrics(text), {"accuracy": 0.91})
+
+    def test_missing_score_raises(self):
+        with self.assertRaises(ValueError):
+            parse_gsm8k_metrics(json.dumps({"aggregate": {"latency": 1.0}}))
+
+
+class GSM8KEvaluatorTest(unittest.TestCase):
+    def test_evaluate_runs_and_parses(self):
+        import os
+
+        captured = {}
+
+        def fake_run(cmd):
+            out_dir = cmd[cmd.index("--out-dir") + 1]
+            run = os.path.join(out_dir, "sgl_eval_gsm8k_20260610")
+            os.makedirs(run, exist_ok=True)
+            with open(os.path.join(run, "metrics.json"), "w") as f:
+                f.write(json.dumps({"aggregate": {"score": 0.97}}))
+            captured["cmd"] = cmd
+
+        ev = GSM8KEvaluator("http://127.0.0.1:40000", num_examples=20, run_eval=fake_run)
+        result = ev.evaluate()
+        self.assertEqual(result, {"accuracy": 0.97})
+        self.assertEqual(captured["cmd"][captured["cmd"].index("--num-examples") + 1], "20")
 
 
 if __name__ == "__main__":
