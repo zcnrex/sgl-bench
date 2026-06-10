@@ -42,12 +42,16 @@ slo:
 
 # Accuracy acceptance gate ([[RFC-0001:C-QUALITY-GATE]]). Defined before the search and
 # evaluated per precision branch; a config below the threshold is excluded from the
-# acceptable results but still recorded and flagged for trade-off inspection. PHASE-0 SEED
-# VALUES — set dataset and threshold to the real quality bar before relying on the gate.
+# acceptable results but still recorded and flagged for trade-off inspection.
+#
+# gsm8k is the fast first-layer gate run on every config during the search (a healthy
+# config sits >95%). The expensive gpqa_diamond eval (~2h) is reserved for final
+# characterization of the chosen config(s), not the search loop. PHASE-0 SEED threshold —
+# set to the real quality bar before relying on the gate.
 quality_gate:
-  dataset: gpqa_diamond
+  dataset: gsm8k
   metric: accuracy
-  threshold: 0.45
+  threshold: 0.95
   direction: higher
 
 precision_branches:

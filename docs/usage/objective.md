@@ -34,9 +34,9 @@ from the **acceptable results** (the frontier) — at every stage, never bought 
 
 ```yaml
 quality_gate:
-  dataset: gpqa_diamond
+  dataset: gsm8k           # fast first-layer gate; reserve gpqa_diamond (~2h) for final validation
   metric: accuracy
-  threshold: 0.45
+  threshold: 0.95
   direction: higher        # score >= threshold passes; use "lower" for e.g. perplexity
 ```
 

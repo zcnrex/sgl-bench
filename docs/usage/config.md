@@ -32,9 +32,9 @@ slo:                          # decode-first objective; gate = per-token ITL (RF
   overrides:                  # per-(isl,osl): decode ITL grows with context length
     - {isl: 60000, osl: 20, per_token_ms: 80}
 quality_gate:                 # accuracy acceptance gate (RFC-0001:C-QUALITY-GATE)
-  dataset: gpqa_diamond
+  dataset: gsm8k              # fast first-layer gate; gpqa_diamond (~2h) is final-only
   metric: accuracy
-  threshold: 0.45             # score >= threshold passes (direction: higher | lower)
+  threshold: 0.95             # score >= threshold passes (direction: higher | lower)
 precision_branches:
   - name: nvfp4
     checkpoint: nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-NVFP4
