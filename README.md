@@ -26,33 +26,27 @@ through an outer/inner loop → measure each workload point with provenance.**
 # 1. Validate the search config
 python -m sglbench.argsearch.validate configs/nemotron_v3_ultra.yaml
 
-# 2. Generate configs — OFAT (sensitivity) first, then a focused grid
+# 2. Generate configs — OFAT (sensitivity) first, then the focused grid
 python -m sglbench.argsearch --config configs/nemotron_v3_ultra.yaml --branch nvfp4 --mode ofat
-python -m sglbench.argsearch --config configs/nemotron_v3_ultra.yaml --branch nvfp4 \
-    --mode grid --grid-args ep-size moe-a2a-backend
+python -m sglbench.argsearch --config configs/nemotron_v3_ultra.yaml --branch nvfp4 --mode grid
 
 # 3. Save configs to out/ as <config_hash>.json + index.jsonl
 python -m sglbench.argsearch --config configs/nemotron_v3_ultra.yaml --branch nvfp4 \
     --mode ofat --save
+
+# 4. Run the live search on a server (launch -> bench -> frontier)
+argsearch-run --config configs/nemotron_v3_ultra.yaml --branch nvfp4 --mode ofat \
+    --isl-osl 8192x256 --concurrency 1 8 32 --port 40000 --frontier
 ```
 
-Driving the search (outer relaunch per config, inner workload sweep) and measuring each
-point:
-
-```python
-from sglbench.argsearch import (
-    load_config, generate_ofat, workload_points, run_search, write_results,
-)
-
-cfg = load_config("configs/nemotron_v3_ultra.yaml")
-branch = cfg.branch("nvfp4")
-results = run_search(generate_ofat(branch), workload_points(cfg.workload_axes), manager)
-write_results(results, "out")   # -> out/results.jsonl
-```
-
-`manager` implements the server-lifecycle contract (launch / client / shutdown). The
-protocols + loop orchestration ship today; the concrete SGLang launcher + benchmark
-transport is the next slice — see the driver guide for the adapter contract and a sketch.
+The focused grid's admitted args + rationale are declared in the config's `focused_grid`
+block (not on the CLI). `argsearch-run` drives the whole outer/inner loop against a live
+SGLang server — concrete launcher (`SGLangServerManager`) and bench transports
+(`bench_one_batch_server` anchor, `bench_serving` percentile-ITL) are implemented and
+hardware-validated; it streams `results.jsonl` per point and optionally runs the gsm8k
+accuracy gate (`--gsm8k-examples`). See [docs/usage/run.md](docs/usage/run.md). For library
+use, `run_search(points, workload, manager)` is the same loop. To run on a RadixArk devbox,
+use `scripts/devbox_sweep.sh` (detached, resilient).
 
 ## Documentation
 
@@ -64,6 +58,8 @@ Per-component guides live in [`docs/usage/`](docs/usage/README.md):
 | Generate restart-required configs | [docs/usage/generate.md](docs/usage/generate.md) |
 | Drive the outer/inner search loop | [docs/usage/driver.md](docs/usage/driver.md) |
 | Measure a workload point | [docs/usage/measure.md](docs/usage/measure.md) |
+| Pareto frontier under the SLO | [docs/usage/objective.md](docs/usage/objective.md) |
+| Run the live search (CLI) | [docs/usage/run.md](docs/usage/run.md) |
 
 ## Develop
 

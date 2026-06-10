@@ -11,6 +11,12 @@ them through an outer/inner loop → measure each workload point with full prove
 | 3. Drive outer/inner search loop | [driver.md](driver.md) | `driver.py`, `sglang_adapter.py` |
 | 4. Measure a workload point | [measure.md](measure.md) | `measure.py` |
 | 5. Pareto frontier under the SLO | [objective.md](objective.md) | `objective.py`, `metrics.py` |
+| Run it live on a server (CLI) | [run.md](run.md) | `run.py`, `sglang_adapter.py` |
+
+The accuracy gate (RFC-0001:C-QUALITY-GATE), the bench transports (`bench_one_batch_server`
+anchor vs `bench_serving` percentile-ITL), and running on a RadixArk devbox
+(`scripts/devbox_sweep.sh`, `run-argsearch-devbox` skill) are covered in
+[run.md](run.md) and [objective.md](objective.md).
 
 The normative methodology lives in [`docs/rfc/RFC-0001.md`](../rfc/RFC-0001.md) (search
 methodology) and [`docs/rfc/RFC-0002.md`](../rfc/RFC-0002.md) (opportunity loop); the

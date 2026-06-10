@@ -65,8 +65,10 @@ The session exposes a `BenchClient` (warmup + measure — see [measure.md](measu
 > (the C-BASELINE-ANCHOR transport) and maps its result record to the canonical metric
 > vocabulary in `metrics.py`. Command construction and result parsing are unit-tested
 > without a GPU. **Before these numbers are relied upon, reconcile them against the stable
-> baseline on a live server (RFC-0001:C-BASELINE-ANCHOR);** genai-bench (richer percentile
-> metrics, e.g. true p95 TTFT) is a future transport behind the same `BenchClient`.
+> baseline on a live server (RFC-0001:C-BASELINE-ANCHOR)** — done on the B300: decode agrees
+> to ~0.1% vs the anchor. `BenchServingClient` (richer percentile ITL via `bench_serving`)
+> is the second transport behind the same `BenchClient`; select it with
+> `argsearch-run --transport serving` (see [run.md](run.md)).
 
 ## Concrete adapter
 
@@ -79,7 +81,7 @@ from sglbench.argsearch import (
 cfg = load_config("configs/nemotron_v3_ultra.yaml")
 branch = cfg.branch("nvfp4")
 
-manager = SGLangServerManager(branch.checkpoint, host="127.0.0.1", port=30000)
+manager = SGLangServerManager(branch.checkpoint, host="127.0.0.1", port=40000)
 results = run_search(generate_ofat(branch), workload_points(cfg.workload_axes), manager)
 write_results(results, "out")                         # -> out/results.jsonl
 ```

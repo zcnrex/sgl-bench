@@ -22,10 +22,12 @@ workload_axes:
   report_isl_osl_pairs:
     - [8192, 65536]
   concurrency: [1, 8, 32, 128, 256, 512]
-  # Steady-state decode-throughput window ([[RFC-0001:C-OBJECTIVE]]). bench_one_batch_server
-  # exposes the single tail step (last_gen_throughput); a true multi-step window needs a
-  # percentile/profiling transport (genai-bench). Swept against a live server; not part of
-  # the restart-required permutations.
+  # Steady-state decode-throughput window size, fixed and recorded before the search
+  # ([[RFC-0001:C-OBJECTIVE]]). bench_one_batch_server exposes the single tail step
+  # (last_gen_throughput); a true multi-step window needs a percentile transport
+  # (bench_serving, which derives the decode rate from median ITL). Swept against a live
+  # server; not part of the restart-required permutations.
+  decode_window_steps: 1
 
 # SLO for the decode-first Pareto frontier ([[RFC-0001:C-OBJECTIVE]]). Defined before the
 # search. The GATE is decode per-token latency (ITL); TTFT is a report-only target and never

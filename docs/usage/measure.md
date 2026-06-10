@@ -23,7 +23,8 @@ result = measure_point(
 ## The BenchClient contract
 
 The transport to a live server is abstracted so the logic runs without a GPU. Implement two
-methods — wrap genai-bench / `bench_one_batch_server` here:
+methods — the shipped `BenchOneBatchClient` (anchor) and `BenchServingClient` (percentile
+ITL) wrap `bench_one_batch_server` / `bench_serving` this way:
 
 ```python
 class MyBenchClient:
