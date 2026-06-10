@@ -137,6 +137,17 @@ class GateStampingTest(unittest.TestCase):
         self.assertTrue(all(r.accuracy == {"accuracy": 0.3} and not r.quality_pass for r in bad))
 
 
+class OnConfigStreamTest(unittest.TestCase):
+    def test_on_config_called_per_config_with_its_records(self):
+        mgr = FakeManager()
+        seen = []
+        run_search(POINTS, workload_points(AXES), mgr,
+                   on_config=lambda cp, recs: seen.append((cp.config_hash, len(recs))))
+        self.assertEqual(len(seen), len(POINTS))
+        self.assertTrue(all(n == 6 for _, n in seen))
+        self.assertEqual([h for h, _ in seen], [cp.config_hash for cp in POINTS])
+
+
 class EvaluateHashesTest(unittest.TestCase):
     def test_only_designated_configs_evaluated_rest_reuse(self):
         mgr = FakeManager()

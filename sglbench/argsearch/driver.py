@@ -76,6 +76,7 @@ def run_search(
     gate: QualityGate | None = None,
     evaluate: Callable[[ServerSession], dict[str, float]] | None = None,
     evaluate_hashes: set[str] | None = None,
+    on_config: Callable[[ConfigPoint, list[MeasurementResult]], None] | None = None,
 ) -> list[MeasurementResult]:
     """Drive the outer/inner search and return one MeasurementResult per inner point.
 
@@ -91,6 +92,7 @@ def run_search(
     last_accuracy: dict[str, float] | None = None
     for cp in points:
         session = manager.launch(cp.args)
+        config_results: list[MeasurementResult] = []
         try:
             accuracy = None
             quality_pass = None
@@ -109,10 +111,18 @@ def run_search(
                 )
                 res.accuracy = accuracy
                 res.quality_pass = quality_pass
-                results.append(res)
+                config_results.append(res)
         finally:
             session.shutdown()
+        results.extend(config_results)
+        if on_config is not None:
+            on_config(cp, config_results)
     return results
+
+
+def result_line(res: MeasurementResult) -> str:
+    """One JSONL record line for a measurement result."""
+    return json.dumps(asdict(res), default=str)
 
 
 def write_results(results: Iterable[MeasurementResult], out_dir: str) -> Path:
@@ -121,5 +131,5 @@ def write_results(results: Iterable[MeasurementResult], out_dir: str) -> Path:
     path = outdir / "results.jsonl"
     with path.open("w") as f:
         for res in results:
-            f.write(json.dumps(asdict(res), default=str) + "\n")
+            f.write(result_line(res) + "\n")
     return path

@@ -449,7 +449,7 @@ def build_serving_cmd(
     1.0 fixes sampled lengths to exactly isl/osl. num_prompts defaults to a few multiples of
     concurrency.
     """
-    n = num_prompts if num_prompts is not None else max(point.concurrency * 3, 8)
+    n = num_prompts if num_prompts is not None else max(point.concurrency * 5, 8)
     cmd = [
         "python", "-m", "sglang.bench_serving",
         "--backend", backend,

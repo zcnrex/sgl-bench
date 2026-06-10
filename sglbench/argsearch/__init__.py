@@ -34,6 +34,7 @@ from .measure import (
 from .driver import (
     ServerManager,
     ServerSession,
+    result_line,
     run_search,
     workload_points,
     write_results,
@@ -95,6 +96,7 @@ __all__ = [
     "measure_point",
     "ServerManager",
     "ServerSession",
+    "result_line",
     "run_search",
     "workload_points",
     "write_results",

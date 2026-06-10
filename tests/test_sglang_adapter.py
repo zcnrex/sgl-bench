@@ -282,9 +282,9 @@ class ServingCmdTest(unittest.TestCase):
         self.assertEqual(cmd[cmd.index("--tokenizer") + 1], "nvidia/X")
         self.assertEqual(cmd[cmd.index("--random-range-ratio") + 1], "1.0")
 
-    def test_num_prompts_auto_scales_with_concurrency(self):
+    def test_num_prompts_auto_scales_5x_concurrency(self):
         cmd = build_serving_cmd("u", WorkloadPoint(8192, 256, 32), "/tmp/s.jsonl")
-        self.assertEqual(cmd[cmd.index("--num-prompts") + 1], "96")
+        self.assertEqual(cmd[cmd.index("--num-prompts") + 1], "160")
 
 
 class ServingParseTest(unittest.TestCase):

@@ -11,7 +11,9 @@ from __future__ import annotations
 import argparse
 import sys
 
-from .driver import run_search, workload_points, write_results
+from pathlib import Path
+
+from .driver import result_line, run_search, workload_points
 from .generate import accuracy_invariant_search, generate_grid, generate_ofat, load_config
 from .objective import build_frontier
 from .sglang_adapter import (
@@ -125,12 +127,25 @@ def main(argv=None) -> int:
             f"evaluating baseline + spot-check ({len(evaluate_hashes)} config(s))"
         )
 
-    results = run_search(
-        points, workload, manager,
-        repeats=a.repeats, gate=gate, evaluate=evaluate, evaluate_hashes=evaluate_hashes,
-    )
-    out = write_results(results, a.out)
-    print(f"wrote {len(results)} records to {out}")
+    out_dir = Path(a.out)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / "results.jsonl"
+    written = 0
+    with out_path.open("w") as rf:
+        def sink(cp, recs):
+            nonlocal written
+            for r in recs:
+                rf.write(result_line(r) + "\n")
+            rf.flush()
+            written += len(recs)
+            print(f"  [{cp.config_hash} {cp.label}] {len(recs)} record(s) -> {out_path}")
+
+        results = run_search(
+            points, workload, manager,
+            repeats=a.repeats, gate=gate, evaluate=evaluate,
+            evaluate_hashes=evaluate_hashes, on_config=sink,
+        )
+    print(f"wrote {written} records to {out_path} (streamed per config)")
 
     if a.frontier and cfg.slo is not None:
         passing, frontier = build_frontier(

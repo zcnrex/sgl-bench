@@ -1,0 +1,47 @@
+#:schema ../schema/work.schema.json
+
+[govctl]
+id = "WI-2026-06-09-015"
+title = "Resilient multi-config devbox sweep: incremental results, wrapper script, devbox skill; run perf-only OFAT sweep on B300"
+status = "active"
+created = "2026-06-09"
+started = "2026-06-09"
+refs = ["RFC-0001"]
+
+[content]
+description = "Make long multi-config sweeps survivable and repeatable, then run one. Add per-config incremental results.jsonl writing (a mid-sweep process death keeps completed configs); bump bench_serving default num_prompts to >=5x max-concurrency for steady-state; add scripts/devbox_sweep.sh (sync->launch on 40000->wait->detached argsearch-run->poll->teardown) and a .claude/skills devbox-run skill capturing the procedure + traps. Then run a perf-only bounded OFAT sweep on chunan-zeng-b300-4gpu and build the decode frontier."
+
+[[content.acceptance_criteria]]
+text = "govctl check passes"
+status = "pending"
+category = "chore"
+
+[[content.acceptance_criteria]]
+text = "run_search writes results incrementally per config (durable mid-sweep); run CLI streams results.jsonl"
+status = "pending"
+category = "added"
+
+[[content.acceptance_criteria]]
+text = "bench_serving default num_prompts is >=5x max-concurrency"
+status = "pending"
+category = "added"
+
+[[content.acceptance_criteria]]
+text = "scripts/devbox_sweep.sh runs sync->launch->detached sweep->poll->teardown resiliently"
+status = "pending"
+category = "added"
+
+[[content.acceptance_criteria]]
+text = "a Claude skill documents the devbox arg-search run procedure + traps"
+status = "pending"
+category = "added"
+
+[[content.acceptance_criteria]]
+text = "GPU-free tests cover incremental writes and the num_prompts default"
+status = "pending"
+category = "chore"
+
+[[content.acceptance_criteria]]
+text = "perf-only OFAT sweep on the B300 yields results.jsonl + a ranked decode frontier"
+status = "pending"
+category = "chore"
