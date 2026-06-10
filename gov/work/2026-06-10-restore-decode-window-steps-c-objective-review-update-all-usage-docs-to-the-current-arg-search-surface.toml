@@ -3,9 +3,10 @@
 [govctl]
 id = "WI-2026-06-10-001"
 title = "Restore decode_window_steps (C-OBJECTIVE); review + update all usage docs to the current arg-search surface"
-status = "active"
+status = "done"
 created = "2026-06-10"
 started = "2026-06-10"
+completed = "2026-06-10"
 refs = ["RFC-0001"]
 
 [content]
@@ -13,20 +14,20 @@ description = "Re-add the decode_window_steps key to workload_axes so the decode
 
 [[content.acceptance_criteria]]
 text = "govctl check passes and the config validates"
-status = "pending"
+status = "done"
 category = "chore"
 
 [[content.acceptance_criteria]]
 text = "decode_window_steps restored to workload_axes (C-OBJECTIVE window recorded)"
-status = "pending"
+status = "done"
 category = "added"
 
 [[content.acceptance_criteria]]
 text = "a run.md documents argsearch-run (transports, gate, --only-config, streaming)"
-status = "pending"
+status = "done"
 category = "added"
 
 [[content.acceptance_criteria]]
 text = "config/objective/driver/measure/generate/README reviewed and updated to match current behavior"
-status = "pending"
+status = "done"
 category = "chore"
