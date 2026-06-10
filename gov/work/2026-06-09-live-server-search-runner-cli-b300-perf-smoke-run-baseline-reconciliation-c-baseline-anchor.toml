@@ -1,0 +1,39 @@
+#:schema ../schema/work.schema.json
+
+[govctl]
+id = "WI-2026-06-09-011"
+title = "Live-server search runner CLI + B300 perf smoke-run baseline reconciliation (C-BASELINE-ANCHOR)"
+status = "done"
+created = "2026-06-09"
+started = "2026-06-09"
+completed = "2026-06-09"
+refs = ["RFC-0001"]
+
+[content]
+description = "Add a CLI entry point that drives the outer/inner search against a live SGLang server (wires generate -> SGLangServerManager -> run_search -> write_results -> frontier), since run_search is currently library-only. Use it for a perf-only smoke run on chunan-zeng-b300-4gpu (baseline nvfp4, TP4, a few workload points) to validate the concrete adapters on real hardware and reconcile TTFT against the stable baseline before the tooling is relied upon (C-BASELINE-ANCHOR). Evidence to support advancing RFC-0001 impl -> test -> stable."
+notes = ["B300 devbox reserves port 30000 (k8s platform); sglang bind fails there post-load. Use --port 40000."]
+
+[[content.acceptance_criteria]]
+text = "govctl check passes"
+status = "done"
+category = "chore"
+
+[[content.acceptance_criteria]]
+text = "a run CLI launches the live search (generate -> run_search -> results.jsonl) with config-limiting knobs for a smoke run"
+status = "done"
+category = "added"
+
+[[content.acceptance_criteria]]
+text = "GPU-free unit test drives the run CLI with injected launch/bench fakes"
+status = "done"
+category = "chore"
+
+[[content.acceptance_criteria]]
+text = "perf smoke run on the B300 produces results.jsonl + a frontier for the baseline config"
+status = "done"
+category = "chore"
+
+[[content.acceptance_criteria]]
+text = "TTFT reconciled against the stable baseline within tolerance (C-BASELINE-ANCHOR)"
+status = "done"
+category = "chore"

@@ -12,6 +12,7 @@ dependencies = [
 argsearch-generate = "sglbench.argsearch.generate:main"
 argsearch-validate = "sglbench.argsearch.validate:main"
 argsearch-frontier = "sglbench.argsearch.objective:main"
+argsearch-run = "sglbench.argsearch.run:main"
 
 [build-system]
 requires = ["setuptools>=61"]
