@@ -4,21 +4,86 @@ The single source of truth for what gets searched is a version-controlled YAML c
 (RFC-0001:C-CONFIG-SOURCE). `configs/nemotron_v3_ultra.yaml` is the seeded example for
 Nemotron-3-Ultra-550B NVFP4.
 
-## Structure
+## Schema reference
 
-A config has a `model`, descriptive `workload_axes` (the inner loop — *not* permuted into
-restart-required configs), and one or more `precision_branches`. Within a branch:
+Every field is tagged **consumed** (read by the tooling and affects behavior) or
+**informational** (recorded for humans/provenance, never read). The schema itself carries
+these one-line descriptions via pydantic `Field(description=...)`, so
+`SearchConfig.model_json_schema()` is the machine-readable mirror of this table.
 
-| Bucket | Meaning |
-| --- | --- |
-| `fixed` | known-best args, never varied |
-| `candidate` | args to vary (≤ 10); each has a `values` list and optional `accuracy_invariant` |
-| `constraints` | illegal-combination rules (`when` → `forbid` / `require`) |
-| `baseline` | one starting value per candidate; must itself be constraint-valid |
-| `focused_grid` | optional: the admitted grid `args`, the interaction `rationale`, and OFAT-best `pins` for the non-gridded candidates (RFC-0001:C-SEARCH-STRATEGY) |
+### Top level (`SearchConfig`)
+
+| Field | Type | Required | Consumed? | Meaning |
+| --- | --- | --- | --- | --- |
+| `model` | str | yes | consumed | Default served model; the `<model>` output slug when a branch sets no `checkpoint`. |
+| `workload_axes` | map | no | consumed | Inner-loop axes (`isl_osl_pairs`, `report_isl_osl_pairs`, `concurrency`); never permuted into restart-required configs. |
+| `slo` | `SLO` | no | consumed | Decode-first objective SLO; required to build the frontier. |
+| `quality_gate` | `QualityGate` | no | consumed | Optional accuracy acceptance gate. |
+| `precision_branches` | list[`PrecisionBranch`] | yes (≥1) | consumed | One or more precision branches to search. |
+
+### `PrecisionBranch`
+
+| Field | Type | Required | Consumed? | Meaning |
+| --- | --- | --- | --- | --- |
+| `name` | str | yes | consumed | Branch identifier, e.g. `nvfp4`. |
+| `checkpoint` | str | no | consumed | Served model path for this branch; the default served model and the `<model>` output-dir slug. |
+| `hardware` | str | no | **informational** | Recorded for humans/provenance only; **never consumed** by the tooling. |
+| `fixed` | map | no | consumed | Known-best args held constant for every config in the branch. |
+| `candidate` | list[`CandidateArg`] | no | consumed | Args to vary (≤ 10). |
+| `constraints` | list[`Constraint`] | no | consumed | Illegal-combination rules filtering generated configs. |
+| `baseline` | map | no | consumed | One starting value per candidate; the OFAT reference point. Must itself be constraint-valid. |
+| `focused_grid` | `FocusedGrid` | no | consumed | Optional second-stage joint-grid spec. |
 
 Precision (e.g. `quantization`) is a top-level **branch**, never a candidate axis
 (RFC-0001:C-PRECISION-BRANCH) — each branch may have its own checkpoint and baseline.
+
+### `CandidateArg`
+
+| Field | Type | Required | Consumed? | Meaning |
+| --- | --- | --- | --- | --- |
+| `name` | str | yes | consumed | Server-arg name to vary (without the leading `--`). |
+| `values` | list | yes (≥1) | consumed | Distinct values to sweep; must include the baseline value. |
+| `accuracy_invariant` | bool | no (default `false`) | consumed | `true` declares the arg changes performance but not outputs, letting its per-config accuracy gate be skipped. |
+
+### `Constraint`
+
+| Field | Type | Required | Consumed? | Meaning |
+| --- | --- | --- | --- | --- |
+| `name` | str | yes | consumed | Rule identifier for error messages. |
+| `description` | str | no | **informational** | Human-readable note on the rule. |
+| `when` | map[str, list] | no | consumed | Arg→allowed-values guard; the rule applies only when every clause matches. |
+| `forbid` | map[str, list] | no | consumed | Arg→values that are illegal when `when` matches. |
+| `require` | map[str, list] | no | consumed | Arg→values that must be present when `when` matches. |
+
+A constraint must set `forbid` or `require` (else it has no effect).
+
+### `SLO` / `SLOOverride`
+
+| Field | Type | Required | Consumed? | Meaning |
+| --- | --- | --- | --- | --- |
+| `slo.per_token_ms` | float > 0 | yes | consumed | Global decode-ITL gate (ms) — the SLO that filters the frontier. |
+| `slo.ttft_p95_ms` | float > 0 | no | consumed (report-only) | Global TTFT p95 target (ms); displayed but never gates. |
+| `slo.overrides` | list[`SLOOverride`] | no | consumed | Per-`(isl, osl)` overrides. |
+| `override.isl` / `override.osl` | int | yes | consumed | The workload pair the override applies to. |
+| `override.per_token_ms` | float > 0 | no | consumed | Per-pair decode-ITL gate; inherits the global value when unset. |
+| `override.ttft_p95_ms` | float > 0 | no | consumed (report-only) | Per-pair TTFT target; inherits the global value when unset. |
+
+### `QualityGate`
+
+| Field | Type | Required | Consumed? | Meaning |
+| --- | --- | --- | --- | --- |
+| `dataset` | str | yes | consumed | Evaluation dataset name passed to the accuracy harness. |
+| `metric` | str | no (default `accuracy`) | consumed | Score key compared against `threshold`. |
+| `threshold` | float | yes | consumed | Pass/fail bound for the metric. |
+| `direction` | `higher`\|`lower` | no (default `higher`) | consumed | `higher`: `score ≥ threshold` passes; `lower`: `score ≤ threshold`. |
+
+### `FocusedGrid`
+
+| Field | Type | Required | Consumed? | Meaning |
+| --- | --- | --- | --- | --- |
+| `args` | list | yes (≥1) | consumed | Candidate names swept jointly in the focused grid. |
+| `rationale` | str | yes | **informational** | Why these args are admitted and plausibly interact (recorded in the grid manifest). |
+| `pins` | map | no | consumed | OFAT-best value for each non-gridded candidate, held fixed during the grid. |
 
 ```yaml
 model: nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-NVFP4

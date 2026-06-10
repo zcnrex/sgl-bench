@@ -149,16 +149,39 @@ class GenerateTest(unittest.TestCase):
     def test_write_dir_creates_dir_and_files(self):
         pts = generate_ofat(self.branch)
         with tempfile.TemporaryDirectory() as tmp:
-            target = Path(tmp) / "nested" / "out"
-            self.assertFalse(target.exists())
-            write_dir(pts, target)
-            self.assertTrue(target.is_dir())
-            files = sorted(p.name for p in target.glob("*.json"))
-            self.assertEqual(files, sorted(f"{p.config_hash}.json" for p in pts))
-            index = [json.loads(line) for line in (target / "index.jsonl").read_text().splitlines()]
+            base = Path(tmp) / "nested" / "out"
+            self.assertFalse(base.exists())
+            outdir = write_dir(pts, base, model="nvidia/Some-Model-NVFP4", mode="ofat")
+            self.assertEqual(outdir, base / "nvidia-Some-Model-NVFP4" / "configs" / "ofat")
+            self.assertTrue(outdir.is_dir())
+            files = sorted(p.name for p in outdir.glob("*.json"))
+            from sglbench.argsearch.measure import label_slug
+            expected = sorted(
+                f"{n:02d}-{label_slug(p.label)}-{p.config_hash[:8]}.json"
+                for n, p in enumerate(pts, 1)
+            )
+            self.assertEqual(files, expected)
+            index = [json.loads(line) for line in (outdir / "index.jsonl").read_text().splitlines()]
             self.assertEqual(len(index), len(pts))
-            one = json.loads((target / f"{pts[0].config_hash}.json").read_text())
-            self.assertEqual(one["config_hash"], pts[0].config_hash)
+            self.assertEqual([r["config_hash"] for r in index], [p.config_hash for p in pts])
+            first = json.loads(
+                (outdir / f"01-{label_slug(pts[0].label)}-{pts[0].config_hash[:8]}.json").read_text()
+            )
+            self.assertEqual(first["config_hash"], pts[0].config_hash)
+
+    def test_save_writes_adr0007_layout(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            rc = gen.main([
+                "--config", str(CONFIG), "--branch", "nvfp4", "--mode", "ofat",
+                "--save", "--out", tmp,
+            ])
+            self.assertEqual(rc, 0)
+            cfgdir = Path(tmp) / "nvidia-NVIDIA-Nemotron-3-Ultra-550B-A55B-NVFP4" / "configs" / "ofat"
+            self.assertTrue((cfgdir / "index.jsonl").exists())
+            jsons = sorted(p.name for p in cfgdir.glob("*.json") if p.name != "index.jsonl")
+            self.assertTrue(jsons[0].startswith("01-baseline-"))
+            rec = json.loads((cfgdir / jsons[0]).read_text())
+            self.assertEqual(len(rec["config_hash"]), 12)
 
     def test_to_cli_includes_fixed_skips_none(self):
         base = generate_ofat(self.branch)[0]

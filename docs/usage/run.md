@@ -12,8 +12,40 @@ python -m sglbench.argsearch.run --config configs/nemotron_v3_ultra.yaml --branc
 ```
 
 Each config is an outer-loop relaunch (RFC-0001:C-LOOP-STRUCTURE); the workload points are
-the inner sweep. One `MeasurementResult` per `(config, workload-point)` is **streamed to
-`<out>/results.jsonl` as each point completes** — a mid-run crash keeps the finished points.
+the inner sweep. One `MeasurementResult` per `(config, workload-point)` is **streamed to the
+run dir's `results.jsonl` as each point completes** — a mid-run crash keeps the finished
+points.
+
+## Output layout & measurement reuse (ADR-0007, RFC-0001:C-RUN-OUTPUT)
+
+Results are isolated per `(model, transport, execution-environment)`:
+
+```
+<out>/<model>/runs/<transport>/<env>/{results.jsonl, manifest.json}
+```
+
+- `<model>` — filesystem-safe slug of the served checkpoint (branch `checkpoint`, else config
+  `model`).
+- `<transport>` — the bench tool name: `bench_one_batch_server` for `--transport one-batch`,
+  `bench_serving` for `--transport serving`.
+- `<env>` — an 8-hex digest of the execution environment (SGLang commit + key library versions
+  + cluster networking env). A new build, library set, or NCCL/transport env lands in a new
+  `<env>` dir, so non-comparable numbers are never mixed.
+
+`--out` is the **base** dir (default `out`); the `<model>/runs/<transport>/<env>` subpath is
+computed. `manifest.json` records the search request (config path, branch, mode, transport,
+requested workload, gate, `force`) plus the environment and a `measured_at` timestamp — written
+even when zero points are eligible (the timestamp is metadata, never part of the identity).
+Every run also **appends** its manifest to `manifests.jsonl` in the same dir, so the record of
+each invocation — including a `--force` re-measure that overrode prior results — is durable and
+not clobbered by a later run (RFC-0001:C-RUN-OUTPUT).
+
+**Reuse is the default.** Before measuring, the runner reads any existing `results.jsonl` in
+the target dir and skips every `(config_hash, workload-point)` already recorded — and does not
+relaunch the server for a config whose points are all already present. Re-invoking with more
+concurrencies or candidates therefore measures only the missing points and **appends** them.
+Pass `--force` to ignore the existing file and re-measure everything (the old `results.jsonl`
+is replaced).
 
 ## Selecting configs and workload
 
@@ -55,7 +87,8 @@ run is perf-only and (when a `quality_gate` is defined) nothing reaches the fron
 - `--repeats N` (≥2) — measured repeats per point after warmup (RFC-0001:C-MEASUREMENT).
 - `--port` (use 40000 on RadixArk devboxes; 30000 is platform-reserved), `--host`,
   `--launch-timeout`, `--model` (default: branch checkpoint / config model).
-- `--out DIR` — output dir for `results.jsonl`.
+- `--out DIR` — **base** output dir; results land under `<out>/<model>/runs/<transport>/<env>/`.
+- `--force` — re-measure every point, ignoring any existing `results.jsonl` in the run dir.
 - `--frontier` — build and print the ranked frontier after the run.
 - `--dry-run` — print the launch + bench commands for each config/point and exit (no GPU).
 

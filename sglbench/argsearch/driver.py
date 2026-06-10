@@ -76,6 +76,7 @@ def run_search(
     gate: QualityGate | None = None,
     evaluate: Callable[[ServerSession], dict[str, float]] | None = None,
     evaluate_hashes: set[str] | None = None,
+    skip_keys: set[tuple[str, str]] | None = None,
     on_config: Callable[[ConfigPoint, list[MeasurementResult]], None] | None = None,
     on_result: Callable[[MeasurementResult], None] | None = None,
 ) -> list[MeasurementResult]:
@@ -86,12 +87,20 @@ def run_search(
     and the gate verdict ([[RFC-0001:C-QUALITY-GATE]]). When `evaluate_hashes` is given,
     accuracy is scored only for configs whose hash is in the set (the baseline + spot-check
     of an accuracy-invariant search) and the most recent score is reused for the rest.
+
+    `skip_keys` is a set of `(config_hash, workload_point.label)` already recorded; matching
+    points are not measured and the server is not relaunched for a config whose points are all
+    skipped, making an extended search incremental ([[RFC-0001:C-RUN-OUTPUT]]).
     """
     workload = list(workload)
     gating = gate is not None and evaluate is not None
+    skip = skip_keys or set()
     results: list[MeasurementResult] = []
     last_accuracy: dict[str, float] | None = None
     for cp in points:
+        pending = [wp for wp in workload if (cp.config_hash, wp.label) not in skip]
+        if not pending:
+            continue
         session = manager.launch(cp.args)
         config_results: list[MeasurementResult] = []
         try:
@@ -102,7 +111,7 @@ def run_search(
                     last_accuracy = evaluate(session)
                 accuracy = last_accuracy
                 quality_pass = gate.passes(accuracy.get(gate.metric)) if accuracy else None
-            for wp in workload:
+            for wp in pending:
                 res = measure_point(
                     session.client,
                     config_hash=cp.config_hash,

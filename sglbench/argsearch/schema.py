@@ -38,9 +38,9 @@ def _key(v: Scalar):
 
 
 class CandidateArg(BaseModel):
-    name: str
-    values: list[Scalar] = Field(min_length=1)
-    accuracy_invariant: bool = False
+    name: str = Field(description="Server-arg name to vary (without the leading --). CONSUMED.")
+    values: list[Scalar] = Field(min_length=1, description="Distinct values to sweep; must include the baseline value. CONSUMED.")
+    accuracy_invariant: bool = Field(default=False, description="True declares the arg changes performance but not outputs, skipping its per-config accuracy gate. CONSUMED.")
 
     @model_validator(mode="after")
     def _unique_values(self) -> "CandidateArg":
@@ -57,11 +57,11 @@ class Constraint(BaseModel):
     `forbid` value is present or a `require` value is absent.
     """
 
-    name: str
-    description: str = ""
-    when: dict[str, list[Scalar]] = Field(default_factory=dict)
-    forbid: dict[str, list[Scalar]] = Field(default_factory=dict)
-    require: dict[str, list[Scalar]] = Field(default_factory=dict)
+    name: str = Field(description="Rule identifier for error messages. CONSUMED.")
+    description: str = Field(default="", description="Human-readable note on the rule. INFORMATIONAL.")
+    when: dict[str, list[Scalar]] = Field(default_factory=dict, description="Arg->allowed-values guard; the rule applies only when every clause matches. CONSUMED.")
+    forbid: dict[str, list[Scalar]] = Field(default_factory=dict, description="Arg->values that are illegal when `when` matches. CONSUMED.")
+    require: dict[str, list[Scalar]] = Field(default_factory=dict, description="Arg->values that must be present when `when` matches. CONSUMED.")
 
     @model_validator(mode="after")
     def _has_effect(self) -> "Constraint":
@@ -86,9 +86,9 @@ class FocusedGrid(BaseModel):
     """Admitted focused-grid args, interaction rationale, and OFAT-best pins for the
     non-gridded candidates ([[RFC-0001:C-SEARCH-STRATEGY]])."""
 
-    args: list[Scalar] = Field(min_length=1)
-    rationale: str = Field(min_length=1)
-    pins: dict[str, Scalar] = Field(default_factory=dict)
+    args: list[Scalar] = Field(min_length=1, description="Candidate names swept jointly in the focused grid. CONSUMED.")
+    rationale: str = Field(min_length=1, description="Why these args are admitted and plausibly interact. INFORMATIONAL.")
+    pins: dict[str, Scalar] = Field(default_factory=dict, description="OFAT-best value for each non-gridded candidate, held fixed during the grid. CONSUMED.")
 
     @model_validator(mode="after")
     def _unique_args(self) -> "FocusedGrid":
@@ -98,14 +98,14 @@ class FocusedGrid(BaseModel):
 
 
 class PrecisionBranch(BaseModel):
-    name: str
-    checkpoint: str | None = None
-    hardware: str | None = None
-    fixed: dict[str, Scalar] = Field(default_factory=dict)
-    candidate: list[CandidateArg] = Field(default_factory=list)
-    constraints: list[Constraint] = Field(default_factory=list)
-    baseline: dict[str, Scalar] = Field(default_factory=dict)
-    focused_grid: FocusedGrid | None = None
+    name: str = Field(description="Branch identifier, e.g. nvfp4. CONSUMED.")
+    checkpoint: str | None = Field(default=None, description="Served model path for this branch; the default served model and `<model>` output slug. CONSUMED.")
+    hardware: str | None = Field(default=None, description="INFORMATIONAL ONLY: recorded for humans/provenance, never consumed by the tooling.")
+    fixed: dict[str, Scalar] = Field(default_factory=dict, description="Known-best args held constant for every config in the branch. CONSUMED.")
+    candidate: list[CandidateArg] = Field(default_factory=list, description="Args to vary (<=10). CONSUMED.")
+    constraints: list[Constraint] = Field(default_factory=list, description="Illegal-combination rules filtering generated configs. CONSUMED.")
+    baseline: dict[str, Scalar] = Field(default_factory=dict, description="One starting value per candidate; the OFAT reference point. CONSUMED.")
+    focused_grid: FocusedGrid | None = Field(default=None, description="Optional second-stage joint grid spec. CONSUMED.")
 
     @property
     def candidate_names(self) -> list[str]:
@@ -220,18 +220,18 @@ class PrecisionBranch(BaseModel):
 class SLOOverride(BaseModel):
     """Per-(isl, osl) SLO override; an unset bound inherits the global value."""
 
-    isl: int
-    osl: int
-    ttft_p95_ms: float | None = Field(default=None, gt=0)
-    per_token_ms: float | None = Field(default=None, gt=0)
+    isl: int = Field(description="Input sequence length this override applies to. CONSUMED.")
+    osl: int = Field(description="Output sequence length this override applies to. CONSUMED.")
+    ttft_p95_ms: float | None = Field(default=None, gt=0, description="Per-pair TTFT target (report-only); inherits the global value when unset. CONSUMED (report-only).")
+    per_token_ms: float | None = Field(default=None, gt=0, description="Per-pair decode-ITL gate; inherits the global value when unset. CONSUMED.")
 
 
 class SLO(BaseModel):
     """SLO for [[RFC-0001:C-OBJECTIVE]]: per-token (ITL) is the gate; TTFT is report-only."""
 
-    per_token_ms: float = Field(gt=0)
-    ttft_p95_ms: float | None = Field(default=None, gt=0)
-    overrides: list[SLOOverride] = Field(default_factory=list)
+    per_token_ms: float = Field(gt=0, description="Global decode-ITL gate in ms; the SLO that filters the frontier. CONSUMED.")
+    ttft_p95_ms: float | None = Field(default=None, gt=0, description="Global TTFT p95 target in ms; displayed but never gates. CONSUMED (report-only).")
+    overrides: list[SLOOverride] = Field(default_factory=list, description="Per-(isl, osl) SLO overrides. CONSUMED.")
 
     def _override(self, isl: int, osl: int) -> SLOOverride | None:
         for o in self.overrides:
@@ -256,10 +256,10 @@ class QualityGate(BaseModel):
     """Accuracy acceptance gate ([[RFC-0001:C-QUALITY-GATE]]): its pass/fail threshold and
     evaluation dataset are defined before the search and evaluated per precision branch."""
 
-    dataset: str
-    metric: str = "accuracy"
-    threshold: float
-    direction: Literal["higher", "lower"] = "higher"
+    dataset: str = Field(description="Evaluation dataset name passed to the accuracy harness. CONSUMED.")
+    metric: str = Field(default="accuracy", description="Score key compared against the threshold. CONSUMED.")
+    threshold: float = Field(description="Pass/fail bound for the metric. CONSUMED.")
+    direction: Literal["higher", "lower"] = Field(default="higher", description="`higher`: score >= threshold passes; `lower`: score <= threshold. CONSUMED.")
 
     def passes(self, score: float | None) -> bool:
         if score is None:
@@ -270,11 +270,11 @@ class QualityGate(BaseModel):
 
 
 class SearchConfig(BaseModel):
-    model: str
-    workload_axes: dict[str, Any] = Field(default_factory=dict)
-    slo: SLO | None = None
-    quality_gate: QualityGate | None = None
-    precision_branches: list[PrecisionBranch] = Field(min_length=1)
+    model: str = Field(description="Default served model; the `<model>` output slug when a branch sets no checkpoint. CONSUMED.")
+    workload_axes: dict[str, Any] = Field(default_factory=dict, description="Inner-loop axes (isl_osl_pairs, report_isl_osl_pairs, concurrency); never permuted into restart-required configs. CONSUMED.")
+    slo: SLO | None = Field(default=None, description="Decode-first objective SLO; required for the frontier. CONSUMED.")
+    quality_gate: QualityGate | None = Field(default=None, description="Optional accuracy acceptance gate. CONSUMED.")
+    precision_branches: list[PrecisionBranch] = Field(min_length=1, description="One or more precision branches to search. CONSUMED.")
 
     @model_validator(mode="after")
     def _unique_branches(self) -> "SearchConfig":

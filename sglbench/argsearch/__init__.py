@@ -29,7 +29,10 @@ from .measure import (
     MeasurementResult,
     WorkloadPoint,
     capture_environment,
+    environment_digest,
+    label_slug,
     measure_point,
+    model_slug,
 )
 from .driver import (
     ServerManager,
@@ -93,7 +96,10 @@ __all__ = [
     "MeasurementResult",
     "WorkloadPoint",
     "capture_environment",
+    "environment_digest",
+    "label_slug",
     "measure_point",
+    "model_slug",
     "ServerManager",
     "ServerSession",
     "result_line",

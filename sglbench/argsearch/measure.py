@@ -14,7 +14,10 @@ without a GPU. A workload point is one inner-loop coordinate
 
 from __future__ import annotations
 
+import hashlib
+import json
 import os
+import re
 from dataclasses import asdict, dataclass, field
 from importlib import metadata
 from statistics import fmean, median
@@ -170,6 +173,28 @@ def capture_environment(
         "library_versions": _library_versions(),
         "network_env": _network_env(environ),
     }
+
+
+def environment_digest(environment: dict) -> str:
+    """Deterministic 8-hex digest of the execution environment ([[RFC-0001:C-RUN-OUTPUT]])."""
+    blob = json.dumps(environment, sort_keys=True, default=str)
+    return hashlib.sha256(blob.encode()).hexdigest()[:8]
+
+
+_SLUG_SAFE = re.compile(r"[^A-Za-z0-9._-]+")
+
+
+def model_slug(name: str) -> str:
+    """Filesystem-safe single-segment slug of a model/checkpoint name."""
+    s = _SLUG_SAFE.sub("-", str(name)).strip("-")
+    return s or "model"
+
+
+def label_slug(s: str) -> str:
+    """Filesystem-safe slug of a config label (`=` becomes `__`)."""
+    s = str(s).replace("=", "__")
+    s = _SLUG_SAFE.sub("-", s).strip("-")
+    return s or "x"
 
 
 def _aggregate(runs: list[dict[str, float]]) -> dict:

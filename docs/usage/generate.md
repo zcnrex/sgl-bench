@@ -51,17 +51,21 @@ ce798d170e76	nvfp4/ofat	mamba-scheduler-strategy=no_buffer
 
 ## Save to disk
 
-Pass `--save` to write per-config files to `out/` instead of stdout — the directory is
-created automatically, one `<config_hash>.json` per config plus an `index.jsonl` manifest.
-The hash-named files are the config's provenance identity (RFC-0001:C-MEASUREMENT). In
-`--mode grid` a `focused_grid.json` is also written, recording the admitted args, the
-rationale, the applied pins, and the emitted config hashes (RFC-0001:C-SEARCH-STRATEGY).
-`out/` is gitignored.
+Pass `--save` to write per-config files instead of stdout. The layout follows ADR-0007:
+configs land under `<out>/<model>/configs/<mode>/`, where `<model>` is a filesystem-safe
+slug of the branch `checkpoint` (falling back to the config `model`) and `<mode>` is
+`ofat` or `grid`. Each config is `<NN>-<label-slug>-<hash8>.json` — `NN` is a 2-digit
+ordinal, `hash8` the first 8 chars of the config hash — plus a per-mode `index.jsonl`. The
+**full** `config_hash` stays inside every record as the provenance identity
+(RFC-0001:C-MEASUREMENT). In `--mode grid` a `focused_grid.json` is also written into that
+mode dir, recording the admitted args, rationale, applied pins, and emitted config hashes
+(RFC-0001:C-SEARCH-STRATEGY). `--out` sets the base dir (default `out`, gitignored).
 
 ```bash
 python -m sglbench.argsearch --config configs/nemotron_v3_ultra.yaml --branch nvfp4 \
     --mode ofat --save
-# wrote 7 configs to out/ (index: out/index.jsonl)
+# wrote 7 configs to out/nvidia-NVIDIA-Nemotron-3-Ultra-550B-A55B-NVFP4/configs/ofat/ \
+#   (index: .../index.jsonl)
 ```
 
 ## Coupled-pair example

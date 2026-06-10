@@ -20,6 +20,7 @@ from pathlib import Path
 
 import yaml
 
+from .measure import label_slug, model_slug
 from .schema import Constraint, PrecisionBranch, SearchConfig, _key
 
 DEFAULT_OUT_DIR = "out"
@@ -164,15 +165,29 @@ def accuracy_invariant_search(branch: PrecisionBranch, points) -> bool:
     return varied_candidates.issubset(invariant)
 
 
-def write_dir(points, out_dir) -> Path:
-    outdir = Path(out_dir)
+def config_dir(base, model: str, mode: str) -> Path:
+    """The per-(model, mode) configs directory under `base` ([[ADR-0007]])."""
+    return Path(base) / model_slug(model) / "configs" / mode
+
+
+def write_dir(points, base=DEFAULT_OUT_DIR, *, model: str | None = None, mode: str | None = None) -> Path:
+    """Write generated configs under `out/<model>/configs/<mode>/` ([[ADR-0007]]).
+
+    Each config is `<NN>-<label-slug>-<hash8>.json` plus a per-mode `index.jsonl`; the full
+    config_hash stays inside each record as the provenance identity ([[RFC-0001:C-MEASUREMENT]]).
+    """
+    points = list(points)
+    if model is None:
+        model = next((p.checkpoint for p in points if p.checkpoint), None) or "model"
+    if mode is None:
+        mode = points[0].mode if points else "ofat"
+    outdir = config_dir(base, model, mode)
     outdir.mkdir(parents=True, exist_ok=True)
     with (outdir / "index.jsonl").open("w") as idx:
-        for cp in points:
+        for n, cp in enumerate(points, 1):
             rec = asdict(cp)
-            (outdir / f"{cp.config_hash}.json").write_text(
-                json.dumps(rec, indent=2, default=str) + "\n"
-            )
+            fname = f"{n:02d}-{label_slug(cp.label)}-{cp.config_hash[:8]}.json"
+            (outdir / fname).write_text(json.dumps(rec, indent=2, default=str) + "\n")
             idx.write(json.dumps(rec, default=str) + "\n")
     return outdir
 
@@ -209,9 +224,10 @@ def main(argv=None) -> int:
     p.add_argument(
         "--save",
         action="store_true",
-        help=f"Write one <config_hash>.json per config (and index.jsonl) to {DEFAULT_OUT_DIR}/ "
-        f"(created automatically) instead of printing to stdout",
+        help=f"Write configs to {DEFAULT_OUT_DIR}/<model>/configs/<mode>/ "
+        f"(<NN>-<label>-<hash8>.json + index.jsonl) instead of printing to stdout",
     )
+    p.add_argument("--out", default=DEFAULT_OUT_DIR, help="Base output dir (default: out)")
     a = p.parse_args(argv)
 
     cfg = load_config(a.config)
@@ -250,12 +266,13 @@ def main(argv=None) -> int:
         print(f"# focused grid: {grid_names}\n# rationale: {fg.rationale}")
 
     if a.save:
-        write_dir(points, DEFAULT_OUT_DIR)
-        msg = (f"wrote {len(points)} configs to {DEFAULT_OUT_DIR}/ "
-               f"(index: {DEFAULT_OUT_DIR}/index.jsonl)")
+        model = branch.checkpoint or cfg.model
+        outdir = write_dir(points, a.out, model=model, mode=a.mode)
+        msg = (f"wrote {len(points)} configs to {outdir}/ "
+               f"(index: {outdir / 'index.jsonl'})")
         if a.mode == "grid":
             manifest = focused_grid_manifest(branch, grid_names, points)
-            mpath = write_grid_manifest(manifest, DEFAULT_OUT_DIR)
+            mpath = write_grid_manifest(manifest, outdir)
             msg += f"\nwrote focused-grid manifest to {mpath}"
         print(msg)
         return 0

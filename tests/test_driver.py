@@ -173,5 +173,31 @@ class EvaluateHashesTest(unittest.TestCase):
         self.assertTrue(all(r.quality_pass for r in results))
 
 
+class SkipKeysTest(unittest.TestCase):
+    def test_skips_recorded_points_and_measures_only_missing(self):
+        mgr = FakeManager()
+        wl = workload_points(AXES)
+        already = {(POINTS[0].config_hash, wl[0].label), (POINTS[0].config_hash, wl[1].label)}
+        results = run_search(POINTS, wl, mgr, skip_keys=already)
+        measured0 = [(r.config_hash, r.label) for r in results if r.config_hash == POINTS[0].config_hash]
+        self.assertNotIn((POINTS[0].config_hash, wl[0].label), measured0)
+        self.assertEqual(len(measured0), len(wl) - 2)
+        measured1 = [r for r in results if r.config_hash == POINTS[1].config_hash]
+        self.assertEqual(len(measured1), len(wl))
+
+    def test_config_not_launched_when_all_points_skipped(self):
+        mgr = FakeManager()
+        wl = workload_points(AXES)
+        all_first = {(POINTS[0].config_hash, w.label) for w in wl}
+        run_search(POINTS, wl, mgr, skip_keys=all_first)
+        self.assertEqual([l["attention-backend"] for l in mgr.launches], ["flashinfer"])
+
+    def test_no_skip_keys_measures_everything(self):
+        mgr = FakeManager()
+        wl = workload_points(AXES)
+        results = run_search(POINTS, wl, mgr, skip_keys=set())
+        self.assertEqual(len(results), len(POINTS) * len(wl))
+
+
 if __name__ == "__main__":
     unittest.main()

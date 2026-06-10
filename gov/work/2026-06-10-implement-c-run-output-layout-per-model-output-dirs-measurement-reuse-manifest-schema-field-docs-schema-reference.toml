@@ -1,0 +1,43 @@
+#:schema ../schema/work.schema.json
+
+[govctl]
+id = "WI-2026-06-10-002"
+title = "Implement C-RUN-OUTPUT layout: per-model output dirs, measurement reuse, manifest; schema field docs + schema reference"
+status = "done"
+created = "2026-06-10"
+started = "2026-06-10"
+completed = "2026-06-10"
+refs = ["RFC-0001"]
+
+[content]
+description = "Implement RFC-0001:C-QUALITY... C-RUN-OUTPUT (v0.5.0) + ADR-0007 layout: content-addressed measurement reuse (skip already-recorded (config,point,transport,env); --force re-measures), collocated per-model output dirs out/<model>/{configs/<mode>/<NN>-<label>-<hash8>.json, runs/<transport>/<env>/{results.jsonl,manifest.json}}, a per-result-set manifest, and execution-environment isolation. Also add Field(description=) to the config schema and turn config.md into a field-by-field reference (consumed vs informational; explain hardware)."
+
+[[content.acceptance_criteria]]
+text = "govctl check passes and full test suite green"
+status = "done"
+category = "chore"
+
+[[content.acceptance_criteria]]
+text = "generate --save and argsearch-run write the collocated per-model layout (out/<model>/configs, out/<model>/runs/<transport>/<env>)"
+status = "done"
+category = "added"
+
+[[content.acceptance_criteria]]
+text = "measurement reuse keyed by (config,point,transport,env); skip recorded, --force re-measures; per-result-set manifest written (even with no eligible result)"
+status = "done"
+category = "added"
+
+[[content.acceptance_criteria]]
+text = "schema fields gain Field(description=); config.md is a field-by-field reference marking consumed vs informational (incl. hardware)"
+status = "done"
+category = "added"
+
+[[content.acceptance_criteria]]
+text = "GPU-free tests cover the new paths, the reuse/skip logic, the env digest, and the manifest"
+status = "done"
+category = "chore"
+
+[[content.acceptance_criteria]]
+text = "compliance-checker finds no Critical C-RUN-OUTPUT gap"
+status = "done"
+category = "chore"

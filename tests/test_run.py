@@ -9,8 +9,14 @@ from pathlib import Path
 
 from sglbench.argsearch import run
 from sglbench.argsearch.generate import load_config
+from sglbench.argsearch.measure import capture_environment, environment_digest
 
 CONFIG = Path(__file__).resolve().parents[1] / "configs" / "nemotron_v3_ultra.yaml"
+NVFP4_MODEL = "nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-NVFP4"
+
+
+def results_path(base, model=NVFP4_MODEL, transport="one-batch"):
+    return run.run_dir(base, model, transport, environment_digest(capture_environment())) / "results.jsonl"
 
 
 class FakeSession:
@@ -97,11 +103,17 @@ class LiveRunTest(unittest.TestCase):
                         "--repeats", "2", "--out", d, "--frontier",
                     ])
                 self.assertEqual(rc, 0)
-                lines = (Path(d) / "results.jsonl").read_text().splitlines()
+                rp = results_path(d)
+                lines = rp.read_text().splitlines()
                 self.assertEqual(len(lines), 1)
                 rec = json.loads(lines[0])
                 self.assertEqual(rec["branch"], "nvfp4")
                 self.assertIn("decode_throughput_tok_s", rec["metrics"])
+                manifest = json.loads((rp.parent / "manifest.json").read_text())
+                self.assertEqual(manifest["branch"], "nvfp4")
+                self.assertEqual(manifest["bench_tool"], "bench_one_batch_server")
+                self.assertIn("measured_at", manifest)
+                self.assertIn("environment", manifest)
         finally:
             run.SGLangServerManager = orig
 
@@ -135,7 +147,7 @@ class GateWiringTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             rc, out = self._run_with_eval(0.97, d)
             self.assertEqual(rc, 0)
-            rec = json.loads((Path(d) / "results.jsonl").read_text().splitlines()[0])
+            rec = json.loads(results_path(d).read_text().splitlines()[0])
             self.assertEqual(rec["accuracy"], {"accuracy": 0.97})
             self.assertTrue(rec["quality_pass"])
             self.assertIn("eligible=1", out)
@@ -144,9 +156,84 @@ class GateWiringTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             rc, out = self._run_with_eval(0.50, d)
             self.assertEqual(rc, 0)
-            rec = json.loads((Path(d) / "results.jsonl").read_text().splitlines()[0])
+            rec = json.loads(results_path(d).read_text().splitlines()[0])
             self.assertFalse(rec["quality_pass"])
             self.assertIn("eligible=0", out)
+
+
+class ReuseTest(unittest.TestCase):
+    def _run(self, out_dir, extra):
+        orig = run.SGLangServerManager
+        run.SGLangServerManager = FakeManager
+        try:
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                rc = run.main([
+                    "--config", str(CONFIG), "--branch", "nvfp4", "--mode", "ofat",
+                    "--limit-configs", "1", "--concurrency", "1", "8",
+                    "--isl-osl", "8192x1024", "--repeats", "2", "--out", out_dir, *extra,
+                ])
+            return rc, buf.getvalue()
+        finally:
+            run.SGLangServerManager = orig
+
+    def test_reinvoke_reuses_and_measures_only_missing(self):
+        with tempfile.TemporaryDirectory() as d:
+            rc, _ = self._run(d, ["--concurrency", "1"])
+            rp = results_path(d)
+            self.assertEqual(len(rp.read_text().splitlines()), 1)
+            rc, out = self._run(d, ["--concurrency", "1", "8"])
+            self.assertEqual(rc, 0)
+            lines = rp.read_text().splitlines()
+            self.assertEqual(len(lines), 2)
+            keys = {(json.loads(l)["config_hash"], json.loads(l)["label"]) for l in lines}
+            self.assertEqual(len(keys), 2)
+            self.assertIn("reusing 1 recorded measurement", out)
+
+    def test_force_remeasures_all(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._run(d, ["--concurrency", "1"])
+            rp = results_path(d)
+            self.assertEqual(len(rp.read_text().splitlines()), 1)
+            rc, out = self._run(d, ["--concurrency", "1", "--force"])
+            self.assertEqual(rc, 0)
+            self.assertEqual(len(rp.read_text().splitlines()), 1)
+            self.assertNotIn("reusing", out)
+
+    def test_manifest_written_even_when_all_reused(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._run(d, ["--concurrency", "1"])
+            rp = results_path(d)
+            manifest = rp.parent / "manifest.json"
+            manifest.unlink()
+            rc, out = self._run(d, ["--concurrency", "1"])
+            self.assertEqual(rc, 0)
+            self.assertTrue(manifest.exists())
+            self.assertEqual(len(rp.read_text().splitlines()), 1)
+
+    def test_force_override_recorded_durably_in_history(self):
+        with tempfile.TemporaryDirectory() as d:
+            self._run(d, ["--concurrency", "1"])
+            self._run(d, ["--concurrency", "1", "--force"])
+            self._run(d, ["--concurrency", "1"])
+            history = (results_path(d).parent / "manifests.jsonl").read_text().splitlines()
+            self.assertEqual(len(history), 3)
+            forced = [json.loads(line)["force"] for line in history]
+            self.assertEqual(forced, [False, True, False])
+
+
+class DryRunPathTest(unittest.TestCase):
+    def test_dry_run_uses_run_dir_paths(self):
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            rc = run.main([
+                "--config", str(CONFIG), "--branch", "nvfp4", "--mode", "ofat",
+                "--limit-configs", "1", "--concurrency", "1", "--isl-osl", "8192x1024",
+                "--out", "outbase", "--dry-run",
+            ])
+        self.assertEqual(rc, 0)
+        out = buf.getvalue()
+        self.assertIn("outbase/nvidia-NVIDIA-Nemotron-3-Ultra-550B-A55B-NVFP4/runs/bench_one_batch_server/", out)
 
 
 if __name__ == "__main__":

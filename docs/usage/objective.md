@@ -1,8 +1,11 @@
 # Objective — decode-first Pareto frontier under an SLO
 
-`objective.py` turns `out/results.jsonl` into the ranked **decode-throughput-versus-decode-latency
-Pareto frontier under an SLO** — the optimization objective of RFC-0001:C-OBJECTIVE (decisions
-in ADR-0004 / ADR-0005). Decode is the first-class citizen:
+`objective.py` turns a run's `results.jsonl` into the ranked
+**decode-throughput-versus-decode-latency Pareto frontier under an SLO** — the optimization
+objective of RFC-0001:C-OBJECTIVE (decisions in ADR-0004 / ADR-0005). It consumes one run
+directory's `results.jsonl` (a single transport + environment, per ADR-0007:
+`out/<model>/runs/<transport>/<env>/results.jsonl`) or globs across them. Decode is the
+first-class citizen:
 
 - The **SLO gate is decode per-token latency (ITL)**. TTFT is captured and displayed but is
   **report-only** — it never excludes a config.
@@ -47,10 +50,28 @@ onto every record as `accuracy` + a `quality_pass` flag. A config that fails the
 eligible config, it is reported as having **no acceptable configuration** rather than emitting a
 degraded one. When no `quality_gate` is defined, the filter is skipped (with a notice).
 
+### Inspecting gate-failing configs (`--inspect`)
+
+To read the perf of gate-failing or accuracy-unmeasured configs (e.g. a perf-only OFAT sweep
+where `accuracy` is null), run with `--inspect` (ADR-0008). It ranks **every** SLO-passing
+config under the same Pareto semantics, ignoring the gate, and annotates each row with its true
+gate status (`PASS` / `FAIL` / `n-a` + the metric value):
+
+```
+!! INSPECTION VIEW — includes gate-FAILING / unmeasured configs; NOT acceptable results (RFC-0001:C-QUALITY-GATE)
+records=21  slo_passing=21  eligible(ignoring gate)=21  frontier=3
+ 1. ce798 nvfp4/isl8192-osl256-c32 ...  decode=1868.3tok/s  ptok=17.1ms  ttft~13121ms  gate=n-a(accuracy=n/a)
+```
+
+`--inspect` is a **read-only view** and never produces acceptable results: it refuses `--out`
+so a gate-failing config can never enter the canonical frontier artifact (C-QUALITY-GATE). To
+persist the inspection view, redirect stdout yourself.
+
 ## Run it
 
 ```bash
-argsearch-frontier --config configs/nemotron_v3_ultra.yaml --results out/results.jsonl
+argsearch-frontier --config configs/nemotron_v3_ultra.yaml \
+    --results out/<model>/runs/bench_one_batch_server/<env>/results.jsonl
 # or: python -m sglbench.argsearch.objective --config ... --results ...
 ```
 
@@ -62,7 +83,8 @@ records=3  slo_passing=2  frontier=1
 
 A config with a terrible TTFT but acceptable decode ITL **survives**; a config with the
 highest raw throughput but a violated decode ITL is **dropped**. Flags: `--branch`,
-`--stat {median,mean}`, `--out`, `--no-save`.
+`--stat {median,mean}`, `--out`, `--no-save`, `--inspect` (read-only view of gate-failing
+configs; see above).
 
 ## How it works
 
@@ -104,7 +126,7 @@ over the OSL-averaged `output_throughput`. TTFT/per-token selection prefer perce
 from sglbench.argsearch import load_config, load_results, build_frontier
 
 cfg = load_config("configs/nemotron_v3_ultra.yaml")
-records = load_results("out/results.jsonl")
+records = load_results("out/<model>/runs/bench_one_batch_server/<env>/results.jsonl")
 passing, frontier = build_frontier(records, cfg.slo, branch="nvfp4", stat="median",
                                    gate=cfg.quality_gate)
 ```

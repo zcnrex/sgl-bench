@@ -6,7 +6,10 @@ from sglbench.argsearch.measure import (
     MIN_REPEATS,
     WorkloadPoint,
     capture_environment,
+    environment_digest,
+    label_slug,
     measure_point,
+    model_slug,
 )
 
 POINT = WorkloadPoint(isl=8192, osl=1024, concurrency=32)
@@ -133,6 +136,35 @@ class MeasureTest(unittest.TestCase):
         env = capture_environment(sglang_commit="c", environ=environ)
         self.assertIn("MYCLUSTER_NET_FOO", env["network_env"])
         self.assertNotIn("UNRELATED", env["network_env"])
+
+
+class IdentityHelpersTest(unittest.TestCase):
+    def test_environment_digest_is_8_hex(self):
+        env = {"sglang_commit": "abc", "library_versions": {"torch": "2.5"}, "network_env": {}}
+        d = environment_digest(env)
+        self.assertEqual(len(d), 8)
+        int(d, 16)
+
+    def test_environment_digest_deterministic_and_key_order_invariant(self):
+        a = {"sglang_commit": "abc", "library_versions": {"torch": "2.5", "sglang": "1.0"}, "network_env": {"NCCL_DEBUG": "INFO"}}
+        b = {"network_env": {"NCCL_DEBUG": "INFO"}, "library_versions": {"sglang": "1.0", "torch": "2.5"}, "sglang_commit": "abc"}
+        self.assertEqual(environment_digest(a), environment_digest(b))
+
+    def test_environment_digest_changes_with_env(self):
+        base = {"sglang_commit": "abc", "library_versions": {"torch": "2.5"}, "network_env": {}}
+        other = {"sglang_commit": "def", "library_versions": {"torch": "2.5"}, "network_env": {}}
+        self.assertNotEqual(environment_digest(base), environment_digest(other))
+
+    def test_model_slug_is_single_safe_segment(self):
+        slug = model_slug("nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-NVFP4")
+        self.assertNotIn("/", slug)
+        self.assertEqual(slug, "nvidia-NVIDIA-Nemotron-3-Ultra-550B-A55B-NVFP4")
+        self.assertEqual(model_slug(""), "model")
+
+    def test_label_slug_maps_equals_and_seps(self):
+        self.assertEqual(label_slug("attention-backend=flashinfer"), "attention-backend__flashinfer")
+        self.assertEqual(label_slug("baseline"), "baseline")
+        self.assertNotIn("/", label_slug("a/b=c"))
 
 
 if __name__ == "__main__":

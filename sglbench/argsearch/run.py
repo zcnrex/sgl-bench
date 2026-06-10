@@ -9,12 +9,15 @@ sweep the workload axes ([[RFC-0001:C-LOOP-STRUCTURE]]), and write provenance re
 from __future__ import annotations
 
 import argparse
+import json
 import sys
+from datetime import datetime, timezone
 
 from pathlib import Path
 
 from .driver import result_line, run_search, workload_points
 from .generate import accuracy_invariant_search, generate_grid, generate_ofat, load_config
+from .measure import capture_environment, environment_digest, model_slug
 from .objective import build_frontier
 from .sglang_adapter import (
     BenchServingClient,
@@ -25,6 +28,27 @@ from .sglang_adapter import (
 )
 
 DEFAULT_OUT_DIR = "out"
+
+TRANSPORT_TOOL = {"one-batch": "bench_one_batch_server", "serving": "bench_serving"}
+
+
+def run_dir(base, model: str, transport: str, env_digest: str) -> Path:
+    """Result-set directory for one (model, transport, environment) ([[ADR-0007]])."""
+    tool = TRANSPORT_TOOL[transport]
+    return Path(base) / model_slug(model) / "runs" / tool / env_digest
+
+
+def read_skip_keys(results_path: Path) -> set[tuple[str, str]]:
+    """`(config_hash, label)` of already-recorded measurements ([[RFC-0001:C-RUN-OUTPUT]])."""
+    keys: set[tuple[str, str]] = set()
+    if not results_path.exists():
+        return keys
+    for line in results_path.read_text().splitlines():
+        if not line.strip():
+            continue
+        rec = json.loads(line)
+        keys.add((rec.get("config_hash", ""), rec.get("label", "")))
+    return keys
 
 
 def select_points(branch, mode: str, limit: int, only_config: str | None = None):
@@ -73,7 +97,8 @@ def main(argv=None) -> int:
     p.add_argument("--gsm8k-examples", type=int, default=0, help="Run gsm8k accuracy gate per config with N examples (0=disabled)")
     p.add_argument("--gsm8k-threads", type=int, default=32, help="Concurrent threads for the gsm8k eval")
     p.add_argument("--launch-timeout", type=float, default=1800.0, help="Seconds to wait for /health")
-    p.add_argument("--out", default=DEFAULT_OUT_DIR, help="Output dir for results.jsonl")
+    p.add_argument("--out", default=DEFAULT_OUT_DIR, help="Base output dir; results land under <out>/<model>/runs/<transport>/<env>/")
+    p.add_argument("--force", action="store_true", help="Re-measure all points, ignoring any existing results.jsonl in the run dir")
     p.add_argument("--frontier", action="store_true", help="Build and print the frontier after the run")
     p.add_argument("--dry-run", action="store_true", help="Print launch/bench commands and exit")
     a = p.parse_args(argv)
@@ -86,9 +111,14 @@ def main(argv=None) -> int:
         p.error(f"no configs matched --only-config {a.only_config!r}")
     workload = select_workload(cfg.workload_axes, a.role, a.concurrency, a.isl_osl, a.limit_workload)
 
+    environment = capture_environment()
+    env_digest = environment_digest(environment)
+    target_dir = run_dir(a.out, model, a.transport, env_digest)
+    out_path = target_dir / "results.jsonl"
+
     print(
         f"model={model}  configs={len(points)}  workload_points={len(workload)}  "
-        f"repeats={a.repeats}  role={a.role}"
+        f"repeats={a.repeats}  role={a.role}  env={env_digest}"
     )
 
     if a.dry_run:
@@ -97,7 +127,7 @@ def main(argv=None) -> int:
             print(f"\n# config {cp.config_hash} {cp.branch}/{cp.label}")
             print(" ".join(build_launch_cmd(model, a.host, a.port, cp.args)))
             for wp in workload:
-                print(" ".join(build_bench_cmd(base_url, wp, f"{a.out}/{cp.config_hash}-{wp.label}.jsonl")))
+                print(" ".join(build_bench_cmd(base_url, wp, str(target_dir / f"{cp.config_hash}-{wp.label}.jsonl"))))
         return 0
 
     bench_factory = None
@@ -133,11 +163,38 @@ def main(argv=None) -> int:
             f"evaluating baseline + spot-check ({len(evaluate_hashes)} config(s))"
         )
 
-    out_dir = Path(a.out)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    out_path = out_dir / "results.jsonl"
+    target_dir.mkdir(parents=True, exist_ok=True)
+    skip_keys = set() if a.force else read_skip_keys(out_path)
+    if a.force and out_path.exists():
+        out_path.unlink()
+    elif skip_keys:
+        print(f"  reusing {len(skip_keys)} recorded measurement(s) in {out_path}")
+
+    manifest = {
+        "config": str(Path(a.config)),
+        "branch": a.branch,
+        "mode": a.mode,
+        "transport": a.transport,
+        "bench_tool": TRANSPORT_TOOL[a.transport],
+        "model": model,
+        "role": a.role,
+        "repeats": a.repeats,
+        "force": a.force,
+        "workload": [{"isl": wp.isl, "osl": wp.osl, "concurrency": wp.concurrency} for wp in workload],
+        "gate": (
+            {"dataset": gate.dataset, "metric": gate.metric, "threshold": gate.threshold,
+             "direction": gate.direction, "gsm8k_examples": a.gsm8k_examples}
+            if gate is not None else None
+        ),
+        "environment": environment,
+        "measured_at": datetime.now(timezone.utc).isoformat(),
+    }
+    (target_dir / "manifest.json").write_text(json.dumps(manifest, indent=2, default=str) + "\n")
+    with (target_dir / "manifests.jsonl").open("a") as mf:
+        mf.write(json.dumps(manifest, default=str) + "\n")
+
     written = 0
-    with out_path.open("w") as rf:
+    with out_path.open("a") as rf:
         def sink(res):
             nonlocal written
             rf.write(result_line(res) + "\n")
@@ -148,7 +205,7 @@ def main(argv=None) -> int:
         results = run_search(
             points, workload, manager,
             repeats=a.repeats, gate=gate, evaluate=evaluate,
-            evaluate_hashes=evaluate_hashes, on_result=sink,
+            evaluate_hashes=evaluate_hashes, skip_keys=skip_keys, on_result=sink,
         )
     print(f"wrote {written} records to {out_path} (streamed per workload point)")
 
