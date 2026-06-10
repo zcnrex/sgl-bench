@@ -32,7 +32,7 @@ from .jsonl import parse_jsonl
 from .measure import BenchClient, WorkloadPoint
 
 DEFAULT_HOST = "127.0.0.1"
-DEFAULT_PORT = 30000
+DEFAULT_PORT = 8888
 DEFAULT_LAUNCH_TIMEOUT_S = 1800.0
 DEFAULT_READY_INTERVAL_S = 5.0
 HEALTH_PATH = "/health"

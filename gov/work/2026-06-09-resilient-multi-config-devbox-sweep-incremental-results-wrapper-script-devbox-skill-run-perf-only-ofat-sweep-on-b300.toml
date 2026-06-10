@@ -10,7 +10,7 @@ completed = "2026-06-09"
 refs = ["RFC-0001"]
 
 [content]
-description = "Make long multi-config sweeps survivable and repeatable, then run one. Add per-config incremental results.jsonl writing (a mid-sweep process death keeps completed configs); bump bench_serving default num_prompts to >=5x max-concurrency for steady-state; add scripts/devbox_sweep.sh (sync->launch on 40000->wait->detached argsearch-run->poll->teardown) and a .claude/skills devbox-run skill capturing the procedure + traps. Then run a perf-only bounded OFAT sweep on chunan-zeng-b300-4gpu and build the decode frontier."
+description = "Make long multi-config sweeps survivable and repeatable, then run one. Add per-config incremental results.jsonl writing (a mid-sweep process death keeps completed configs); bump bench_serving default num_prompts to >=5x max-concurrency for steady-state; add scripts/devbox_sweep.sh (sync->launch on 8888->wait->detached argsearch-run->poll->teardown) and a .claude/skills devbox-run skill capturing the procedure + traps. Then run a perf-only bounded OFAT sweep on chunan-zeng-b300-4gpu and build the decode frontier."
 notes = ["OFAT @ osl256 decode ranking: mamba-backend=triton (-14%), mamba-ssm-dtype=float32 (-5%), attention-backend=flashinfer (-3.5%) are worse than baseline; top cluster (no_buffer/0.7/baseline) within ~0.4% (noise). osl65536 high-concurrency (c>=128) bench is multi-hour and OOM-prone (KV pool)."]
 
 [[content.acceptance_criteria]]

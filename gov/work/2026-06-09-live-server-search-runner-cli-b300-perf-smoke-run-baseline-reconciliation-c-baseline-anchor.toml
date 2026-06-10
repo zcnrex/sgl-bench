@@ -11,7 +11,7 @@ refs = ["RFC-0001"]
 
 [content]
 description = "Add a CLI entry point that drives the outer/inner search against a live SGLang server (wires generate -> SGLangServerManager -> run_search -> write_results -> frontier), since run_search is currently library-only. Use it for a perf-only smoke run on chunan-zeng-b300-4gpu (baseline nvfp4, TP4, a few workload points) to validate the concrete adapters on real hardware and reconcile TTFT against the stable baseline before the tooling is relied upon (C-BASELINE-ANCHOR). Evidence to support advancing RFC-0001 impl -> test -> stable."
-notes = ["B300 devbox reserves port 30000 (k8s platform); sglang bind fails there post-load. Use --port 40000."]
+notes = ["B300 devbox reserves port 30000 (k8s platform); sglang bind fails there post-load. Use --port 8888."]
 
 [[content.acceptance_criteria]]
 text = "govctl check passes"

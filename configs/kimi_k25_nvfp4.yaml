@@ -1,0 +1,209 @@
+# Versioned source of truth for the Kimi-K2.5 NVFP4 server-arg search.
+# Implements [[RFC-0001:C-CONFIG-SOURCE]]. Seeded from the published model card
+# (nvidia/Kimi-K2.5-NVFP4, 2026-06-10). Restart-required server args only; workload
+# axes below are the inner loop ([[RFC-0001:C-LOOP-STRUCTURE]]) and are not permuted.
+#
+# Architecture: KimiK25 text tower is DeepseekV3ForCausalLM — MLA attention
+# (kv_lora_rank 512, q_lora_rank 1536) + MoE (384 routed experts, 8/tok, 1 shared),
+# 61 layers, hidden 7168, 256K context (YaRN factor 64). So the candidate levers are
+# the DeepSeek-style EP / DP-attention / MoE-all-to-all knobs, NOT the Mamba knobs.
+#
+# `model` is the served checkpoint and carries the weight precision (NVFP4): a different
+# weight precision (e.g. FP8) is a different checkpoint and gets its own config file, not
+# a branch here. A branch is a partition WITHIN this checkpoint, keyed by its hardware
+# target and KV-cache precision ([[RFC-0001:C-BRANCH]]). Add a sibling branch under
+# `branches` for a different hardware target or KV-cache precision on this same checkpoint.
+
+model: nvidia/Kimi-K2.5-NVFP4
+
+workload_axes:
+  # Workload cost-role staging ([[RFC-0001:C-WORKLOAD-STAGING]]).
+  # iter: short-output, long-context — drives the arg search; the tail decode window gives
+  # steady-state decode throughput at that context length.
+  isl_osl_pairs:
+    - [50000, 500]
+  report_isl_osl_pairs:
+    - [50000, 500]
+  concurrency: [16, 32, 64]
+  # Steady-state decode-throughput window size, fixed and recorded before the search
+  # ([[RFC-0001:C-OBJECTIVE]]). bench_one_batch_server exposes the single tail step
+  # (last_gen_throughput); a true multi-step window needs a percentile transport
+  # (bench_serving, which derives the decode rate from median ITL). Swept against a live
+  # server; not part of the restart-required permutations.
+  decode_window_steps: 1
+
+# SLO for the decode-first Pareto frontier ([[RFC-0001:C-OBJECTIVE]]). Defined before the
+# search. The GATE is decode per-token latency (ITL); TTFT is a report-only target and never
+# excludes a config. PHASE-0 SEED VALUES — tune to the real service target. Decode ITL grows
+# with context length, so the long-context iter pairs get a relaxed per-token override.
+slo:
+  per_token_ms: 50
+  ttft_p95_ms: 8000
+  overrides:
+    - {isl: 50000, osl: 500, per_token_ms: 90}
+
+# Accuracy acceptance gate ([[RFC-0001:C-QUALITY-GATE]]). Defined before the search and
+# evaluated per branch. The gate is within-branch and baseline-relative: a config passes only
+# if its metric is no more than `tolerance` below its OWN branch baseline (the baseline-label
+# config's measured accuracy). A failing config is excluded from the acceptable results but
+# still recorded and flagged for trade-off inspection.
+#
+# gsm8k is the fast first-layer gate run on every config during the search. The expensive
+# gpqa_diamond eval (~2h) is reserved for final characterization of the chosen config(s), not
+# the search loop. PHASE-0 SEED tolerance — set to the real quality bar before relying on it.
+quality_gate:
+  dataset: gsm8k
+  metric: accuracy
+  tolerance: 0.02
+  direction: higher
+
+# Branches within this checkpoint ([[RFC-0001:C-BRANCH]]). Each is keyed by its hardware
+# target and KV-cache precision; both are recorded in the measurement identity.
+branches:
+  - name: gb200-4-bf16kv
+    hardware: 4xGB200 single-node TP4
+
+    # Known-best, never varied.
+    fixed:
+      quantization: modelopt_fp4
+      trust-remote-code: true
+      kv-cache-dtype: bf16 # requirement
+      # context-length: 131072 -- don't set here, use the default
+      tensor-parallel-size: 4
+      mem-fraction-static: 0.9
+      cuda-graph-max-bs: 256
+
+    # Strong known-good starting point (one value per candidate). Plain TP4, no EP / DP-attn.
+    baseline:
+      attention-backend: trtllm_mla
+      ep-size: 1
+      moe-a2a-backend: none
+      dp-size: 1
+      enable-dp-attention: false
+      chunked-prefill-size: 8192
+
+    # Varied during the search (<= 10, per C-SCOPE).
+    candidate:
+      - name: attention-backend         # MLA decode/prefill kernel on B200
+        values: [trtllm_mla, tokenspeed_mla]
+      - name: ep-size                   # MoE expert parallelism; coupled with moe-a2a-backend
+        values: [1, 4]
+        accuracy_invariant: true
+      - name: moe-a2a-backend           # MoE all-to-all transport; deepep needed for EP
+        values: [none, deepep]
+        accuracy_invariant: true
+      - name: dp-size                   # attention data parallelism; coupled with enable-dp-attention
+        values: [1, 2, 4]
+        accuracy_invariant: true
+      - name: enable-dp-attention       # no-value boolean flag; coupled with dp-size
+        values: [false, true]
+        accuracy_invariant: true
+      - name: chunked-prefill-size
+        values: [8192, 16384, 32768]
+        accuracy_invariant: true        # Need to verify?
+
+    # Admitted focused-grid selection (C-SEARCH-STRATEGY). The non-gridded candidates are
+    # pinned to their OFAT-best value; the coupled pairs are swept jointly below.
+    focused_grid:
+      args: [ep-size, moe-a2a-backend, dp-size, enable-dp-attention]
+      rationale: >-
+        ep-size/moe-a2a-backend and dp-size/enable-dp-attention are coupled pairs that OFAT
+        cannot vary individually (a single-arg change is always constraint-invalid), so their
+        interaction can only be measured jointly. attention-backend showed independent OFAT
+        sensitivity and is pinned to its OFAT-best value during this grid.
+      pins:
+        attention-backend: trtllm_mla
+        chunked-prefill-size: 8192
+
+    # Illegal combinations pruned before launch (C-CONFIG-SOURCE). ep-size/moe-a2a-backend
+    # and dp-size/enable-dp-attention are coupled pairs: each "on" mode needs its partner
+    # arg, and the "off" mode must not request it. OFAT cannot toggle either pair by a
+    # single change, so they belong in the focused grid (C-SEARCH-STRATEGY).
+    constraints:
+      - name: ep-requires-deepep
+        description: "EP requires the deepep MoE all-to-all backend."
+        when: {ep-size: [4]}
+        require: {moe-a2a-backend: [deepep]}
+      - name: no-ep-forbids-deepep
+        description: "Without expert parallelism, the deepep all-to-all backend is invalid."
+        when: {ep-size: [1]}
+        forbid: {moe-a2a-backend: [deepep]}
+      - name: dp-requires-dp-attention
+        description: "dp-size > 1 requires the --enable-dp-attention flag."
+        when: {dp-size: [2, 4]}
+        require: {enable-dp-attention: [true]}
+      - name: no-dp-forbids-dp-attention
+        description: "--enable-dp-attention is invalid without attention data parallelism (dp-size 1)."
+        when: {dp-size: [1]}
+        forbid: {enable-dp-attention: [true]}
+
+  - name: b300-4-bf16kv
+    hardware: 4xB300 single-node TP4
+
+    # Known-best, never varied.
+    fixed:
+      quantization: modelopt_fp4
+      trust-remote-code: true
+      kv-cache-dtype: bf16 # requirement
+      # context-length: 131072 -- don't set here, use the default
+      tensor-parallel-size: 4
+      mem-fraction-static: 0.9
+      cuda-graph-max-bs: 256
+
+    # Strong known-good starting point (one value per candidate). Plain TP4, no EP / DP-attn.
+    baseline:
+      attention-backend: trtllm_mla
+      ep-size: 1
+      moe-a2a-backend: none
+      dp-size: 1
+      enable-dp-attention: false
+      chunked-prefill-size: 8192
+
+    # Varied during the search (<= 10, per C-SCOPE).
+    candidate:
+      - name: attention-backend         # MLA decode/prefill kernel on B300
+        values: [trtllm_mla, tokenspeed_mla]
+      - name: ep-size                   # MoE expert parallelism; coupled with moe-a2a-backend
+        values: [1, 4]
+        accuracy_invariant: true
+      - name: moe-a2a-backend           # MoE all-to-all transport; deepep needed for EP
+        values: [none, deepep]
+        accuracy_invariant: true
+      - name: dp-size                   # attention data parallelism; coupled with enable-dp-attention
+        values: [1, 2, 4]
+        accuracy_invariant: true
+      - name: enable-dp-attention       # no-value boolean flag; coupled with dp-size
+        values: [false, true]
+        accuracy_invariant: true
+      - name: chunked-prefill-size
+        values: [8192, 16384, 32768]
+        accuracy_invariant: true        # Need to verify?
+
+    focused_grid:
+      args: [ep-size, moe-a2a-backend, dp-size, enable-dp-attention]
+      rationale: >-
+        ep-size/moe-a2a-backend and dp-size/enable-dp-attention are coupled pairs that OFAT
+        cannot vary individually (a single-arg change is always constraint-invalid), so their
+        interaction can only be measured jointly. attention-backend showed independent OFAT
+        sensitivity and is pinned to its OFAT-best value during this grid.
+      pins:
+        attention-backend: trtllm_mla
+        chunked-prefill-size: 8192
+
+    constraints:
+      - name: ep-requires-deepep
+        description: "EP requires the deepep MoE all-to-all backend."
+        when: {ep-size: [4]}
+        require: {moe-a2a-backend: [deepep]}
+      - name: no-ep-forbids-deepep
+        description: "Without expert parallelism, the deepep all-to-all backend is invalid."
+        when: {ep-size: [1]}
+        forbid: {moe-a2a-backend: [deepep]}
+      - name: dp-requires-dp-attention
+        description: "dp-size > 1 requires the --enable-dp-attention flag."
+        when: {dp-size: [2, 4]}
+        require: {enable-dp-attention: [true]}
+      - name: no-dp-forbids-dp-attention
+        description: "--enable-dp-attention is invalid without attention data parallelism (dp-size 1)."
+        when: {dp-size: [1]}
+        forbid: {enable-dp-attention: [true]}

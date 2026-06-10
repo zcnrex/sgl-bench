@@ -39,7 +39,7 @@ class FakeSession:
 
 
 class FakeManager:
-    def __init__(self, model, host="127.0.0.1", port=30000, **kw):
+    def __init__(self, model, host="127.0.0.1", port=8888, **kw):
         self.model = model
         self.launches = []
 

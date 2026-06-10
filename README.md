@@ -97,7 +97,7 @@ DEVBOX=<your-devbox> scripts/devbox_sweep.sh \
     --isl-osl 8192x256 --concurrency 1 8 32 --frontier
 #   ... or, on the GPU host directly:
 #   argsearch-run --config configs/nemotron_v3_ultra_nvfp4.yaml --branch b200-fp8kv --mode ofat \
-#       --isl-osl 8192x256 --concurrency 1 8 32 --port 40000 --frontier
+#       --isl-osl 8192x256 --concurrency 1 8 32 --port 8888 --frontier
 ```
 
 `scripts/devbox_sweep.sh` runs `argsearch-run` **detached** on the devbox (survives SSH drops),

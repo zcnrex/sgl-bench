@@ -81,7 +81,7 @@ from sglbench.argsearch import (
 cfg = load_config("configs/nemotron_v3_ultra_nvfp4.yaml")
 branch = cfg.branch("nvfp4")
 
-manager = SGLangServerManager(branch.checkpoint, host="127.0.0.1", port=40000)
+manager = SGLangServerManager(branch.checkpoint, host="127.0.0.1", port=8888)
 results = run_search(generate_ofat(branch), workload_points(cfg.workload_axes), manager)
 write_results(results, "out")                         # -> out/results.jsonl
 ```

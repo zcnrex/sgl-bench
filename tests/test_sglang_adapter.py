@@ -62,12 +62,12 @@ class FakeProc:
 
 class BuildCmdTest(unittest.TestCase):
     def test_launch_cmd_structure(self):
-        cmd = build_launch_cmd("my/model", "127.0.0.1", 30000,
+        cmd = build_launch_cmd("my/model", "127.0.0.1", 8888,
                                {"tensor-parallel-size": 4, "enable-dp-attention": True})
         self.assertEqual(cmd[:3], ["python", "-m", "sglang.launch_server"])
         self.assertIn("--model-path", cmd)
         self.assertEqual(cmd[cmd.index("--model-path") + 1], "my/model")
-        self.assertEqual(cmd[cmd.index("--port") + 1], "30000")
+        self.assertEqual(cmd[cmd.index("--port") + 1], "8888")
         self.assertIn("--tensor-parallel-size", cmd)
         self.assertEqual(cmd[cmd.index("--tensor-parallel-size") + 1], "4")
         self.assertIn("--enable-dp-attention", cmd)
@@ -216,11 +216,11 @@ class ProtocolConformanceTest(unittest.TestCase):
 
 class GSM8KCmdTest(unittest.TestCase):
     def test_base_url_normalized_to_v1(self):
-        cmd = build_gsm8k_cmd("http://127.0.0.1:40000", "/tmp/o", num_examples=40)
+        cmd = build_gsm8k_cmd("http://127.0.0.1:8888", "/tmp/o", num_examples=40)
         self.assertIn("sgl-eval", cmd)
         self.assertIn("gsm8k", cmd)
         i = cmd.index("--base-url")
-        self.assertEqual(cmd[i + 1], "http://127.0.0.1:40000/v1")
+        self.assertEqual(cmd[i + 1], "http://127.0.0.1:8888/v1")
         self.assertIn("--num-examples", cmd)
         self.assertEqual(cmd[cmd.index("--num-examples") + 1], "40")
 
@@ -262,7 +262,7 @@ class GSM8KEvaluatorTest(unittest.TestCase):
                 f.write(json.dumps({"aggregate": {"score": 0.97}}))
             captured["cmd"] = cmd
 
-        ev = GSM8KEvaluator("http://127.0.0.1:40000", num_examples=20, run_eval=fake_run)
+        ev = GSM8KEvaluator("http://127.0.0.1:8888", num_examples=20, run_eval=fake_run)
         result = ev.evaluate()
         self.assertEqual(result, {"accuracy": 0.97})
         self.assertEqual(captured["cmd"][captured["cmd"].index("--num-examples") + 1], "20")
@@ -271,7 +271,7 @@ class GSM8KEvaluatorTest(unittest.TestCase):
 class ServingCmdTest(unittest.TestCase):
     def test_maps_workload_and_tokenizer(self):
         cmd = build_serving_cmd(
-            "http://127.0.0.1:40000", WorkloadPoint(8192, 256, 32), "/tmp/s.jsonl",
+            "http://127.0.0.1:8888", WorkloadPoint(8192, 256, 32), "/tmp/s.jsonl",
             tokenizer="nvidia/X", num_prompts=64,
         )
         self.assertIn("sglang.bench_serving", cmd)

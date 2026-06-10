@@ -7,7 +7,7 @@ ties together `generate.py`, `sglang_adapter.py`, `driver.py`, and `objective.py
 
 ```bash
 python -m sglbench.argsearch.run --config configs/nemotron_v3_ultra_nvfp4.yaml --branch b200-fp8kv \
-    --mode ofat --isl-osl 8192x256 --concurrency 1 8 32 --port 40000 --frontier
+    --mode ofat --isl-osl 8192x256 --concurrency 1 8 32 --port 8888 --frontier
 # or, after install:  argsearch-run --config ... --branch b200-fp8kv --mode ofat ...
 ```
 
@@ -85,14 +85,14 @@ run is perf-only and (when a `quality_gate` is defined) nothing reaches the fron
 ## Other flags
 
 - `--repeats N` (≥2) — measured repeats per point after warmup (RFC-0001:C-MEASUREMENT).
-- `--port` (use 40000 on RadixArk devboxes; 30000 is platform-reserved), `--host`,
+- `--port` (use 8888), `--host`,
   `--launch-timeout`, `--model` (default: branch checkpoint / config model).
 - `--out DIR` — **base** output dir; results land under `<out>/<model>/runs/<transport>/<env>/`.
 - `--force` — re-measure every point, ignoring any existing `results.jsonl` in the run dir.
 - `--frontier` — build and print the ranked frontier after the run.
 - `--dry-run` — print the launch + bench commands for each config/point and exit (no GPU).
 
-## Running on a RadixArk devbox
+## Running on a devbox
 
 Use `scripts/devbox_sweep.sh`, which syncs the repo, launches `argsearch-run` **detached**
 (survives ssh/proxy drops), polls reconnect-tolerantly, and fetches results:

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Resilient driver for an sgl-bench arg search on a RadixArk devbox.
+# Resilient driver for an sgl-bench arg search on a devbox.
 #
 # The sweep (argsearch-run) runs DETACHED on the devbox and manages the per-config
 # server lifecycle itself; this script only syncs, kicks it off, and polls. An ssh / rx
@@ -12,12 +12,12 @@
 #       --mode ofat --isl-osl 8192x256 --concurrency 1 8 32
 #   (any extra args are passed straight through to `python -m sglbench.argsearch.run`)
 #
-# Env overrides: DEVBOX, PORT (default 40000 — 30000 is platform-reserved), REMOTE_DIR,
+# Env overrides: DEVBOX, PORT (default 8888), REMOTE_DIR,
 #   HF_HOME_REMOTE (default /scratch/huggingface), OUT, LOG, POLL_ITERS, POLL_SECS.
 set -euo pipefail
 
 DEVBOX="${DEVBOX:-chunan-zeng-b300-4gpu}"
-PORT="${PORT:-40000}"
+PORT="${PORT:-8888}"
 REMOTE_DIR="${REMOTE_DIR:-/sgl-workspace/sgl-bench}"
 HF_HOME_REMOTE="${HF_HOME_REMOTE:-/scratch/huggingface}"
 OUT="${OUT:-/sgl-workspace/sweep-out}"

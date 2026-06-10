@@ -15,7 +15,7 @@ them through an outer/inner loop → measure each workload point with full prove
 | Run it live on a server (CLI) | [run.md](run.md) | `run.py`, `sglang_adapter.py` |
 
 The accuracy gate (RFC-0001:C-QUALITY-GATE), the bench transports (`bench_one_batch_server`
-anchor vs `bench_serving` percentile-ITL), and running on a RadixArk devbox
+anchor vs `bench_serving` percentile-ITL), and running on a devbox
 (`scripts/devbox_sweep.sh`, `run-argsearch-devbox` skill) are covered in
 [run.md](run.md) and [objective.md](objective.md).
 

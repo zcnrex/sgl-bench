@@ -98,7 +98,7 @@ def main(argv=None) -> int:
     p.add_argument("--limit-workload", type=int, default=0, help="Run only the first N workload points (0=all)")
     p.add_argument("--model", default=None, help="Served model checkpoint (default: cfg.model)")
     p.add_argument("--host", default="127.0.0.1")
-    p.add_argument("--port", type=int, default=30000)
+    p.add_argument("--port", type=int, default=8888)
     p.add_argument("--transport", choices=["one-batch", "serving"], default="one-batch",
                    help="Bench transport")
     p.add_argument("--serving-num-prompts", type=int, default=0, help="Prompts for serving transport (0=auto)")
