@@ -3,7 +3,7 @@
 [govctl]
 id = "ADR-0010"
 title = "Accuracy gate and Pareto frontier are scoped within a branch, never cross-branch"
-status = "proposed"
+status = "accepted"
 date = "2026-06-10"
 refs = [
     "RFC-0001",

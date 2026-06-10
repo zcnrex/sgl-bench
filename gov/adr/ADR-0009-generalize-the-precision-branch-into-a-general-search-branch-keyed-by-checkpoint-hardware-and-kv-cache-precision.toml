@@ -3,7 +3,7 @@
 [govctl]
 id = "ADR-0009"
 title = "Generalize the precision branch into a within-checkpoint search branch keyed by hardware and KV-cache precision"
-status = "proposed"
+status = "accepted"
 date = "2026-06-10"
 refs = [
     "RFC-0001",

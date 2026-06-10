@@ -5,6 +5,7 @@ id = "C-BRANCH"
 title = "Search branches, not grid axes"
 kind = "normative"
 status = "active"
+since = "0.6.0"
 
 [content]
 text = """

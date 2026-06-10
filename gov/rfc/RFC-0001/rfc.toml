@@ -3,13 +3,13 @@
 [govctl]
 id = "RFC-0001"
 title = "Large-Model SGLang Server-Arg Search Methodology"
-version = "0.5.0"
+version = "0.6.0"
 status = "normative"
 phase = "test"
 owners = ["@Chunan Zeng"]
 created = "2026-06-09"
 updated = "2026-06-10"
-signature = "f66916814d1289ee3d697c4a0909e6e92f183ba932b931f5e5897a8a0a4cc3fc"
+signature = "a2e5742ffadc55ae3dc66fa5f82cb857e4f1e89fcccb3ee002891f0b7fad625b"
 
 [[sections]]
 title = "Summary"
@@ -30,6 +30,18 @@ clauses = [
     "clauses/C-BASELINE-ANCHOR.toml",
     "clauses/C-WORKLOAD-STAGING.toml",
     "clauses/C-RUN-OUTPUT.toml",
+]
+
+[[changelog]]
+version = "0.6.0"
+date = "2026-06-10"
+notes = "Generalize the precision branch into a within-checkpoint branch; scope accuracy gate and Pareto frontier within a branch"
+added = ["C-BRANCH — a branch is a partition WITHIN one checkpoint, keyed by hardware target + KV-cache precision (+ optional other runtime precision); weight precision defines the checkpoint/model, not a branch key"]
+changed = [
+    "C-PRECISION-BRANCH superseded by C-BRANCH",
+    "C-QUALITY-GATE — accuracy gate is within-branch and baseline-relative (one-sided: no more than a fixed tolerance below the config's own branch baseline); cross-branch comparison forbidden for eligibility",
+    "C-OBJECTIVE — Pareto frontier constructed within a single branch; cross-branch comparison is reporting only",
+    "C-MEASUREMENT / C-RUN-OUTPUT — execution environment includes the hardware target (accelerator model + device count)",
 ]
 
 [[changelog]]
