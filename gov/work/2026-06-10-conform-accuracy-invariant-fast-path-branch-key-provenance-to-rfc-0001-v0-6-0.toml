@@ -1,0 +1,47 @@
+#:schema ../schema/work.schema.json
+
+[govctl]
+id = "WI-2026-06-10-006"
+title = "Conform accuracy-invariant fast path + branch-key provenance to RFC-0001 v0.6.0"
+status = "queue"
+created = "2026-06-10"
+refs = [
+    "RFC-0001",
+    "RFC-0001:C-QUALITY-GATE",
+    "RFC-0001:C-BRANCH",
+    "RFC-0001:C-MEASUREMENT",
+]
+depends_on = ["WI-2026-06-10-004"]
+
+[content]
+description = "Close the C-QUALITY-GATE / C-BRANCH conformance gaps the compliance-checker found after WI-2026-06-10-004 (the accuracy-invariant fast path and branch-key provenance, all orthogonal to the Branch-schema migration itself). Today an accuracy-invariant-only search evaluates points[-1] (a single-arg OFAT variant) as its spot-check, never persists the skip decision or the per-arg accuracy classification, leaves the KV-cache-precision treatment implicit, and never reconciles the declared branch hardware against the detected accelerator."
+
+[[content.acceptance_criteria]]
+text = "an accuracy-invariant-only search evaluates a spot-check config that sets EVERY varied accuracy-invariant candidate to an extreme of its range (constraint-valid), and adds its hash to the evaluated set, instead of reusing points[-1] (C-QUALITY-GATE)"
+status = "pending"
+category = "added"
+
+[[content.acceptance_criteria]]
+text = "the run manifest records that per-config evaluation was skipped, together with the spot-check config identity and its gate result (C-QUALITY-GATE)"
+status = "pending"
+category = "added"
+
+[[content.acceptance_criteria]]
+text = "the per-argument accuracy-invariant/accuracy-active classification is echoed into the produced result set / manifest so it is inspectable from the recorded output (C-QUALITY-GATE)"
+status = "pending"
+category = "added"
+
+[[content.acceptance_criteria]]
+text = "the chosen KV-cache-precision treatment (branch key vs accuracy-active candidate) is explicitly recorded per branch (C-BRANCH)"
+status = "pending"
+category = "added"
+
+[[content.acceptance_criteria]]
+text = "at launch the declared branch.hardware is reconciled against the detected accelerator, surfacing a mismatch rather than silently accepting it (C-BRANCH/C-MEASUREMENT)"
+status = "pending"
+category = "added"
+
+[[content.acceptance_criteria]]
+text = "full pytest suite passes and govctl check passes"
+status = "pending"
+category = "chore"
