@@ -41,11 +41,16 @@ retry rsync -az --exclude '.git' --exclude 'out' --exclude '__pycache__' --exclu
   --exclude '.govctl' "$LOCAL_DIR"/ "$DEVBOX:$REMOTE_DIR/"
 ssh -n "$DEVBOX" "pip install -e $REMOTE_DIR -q 2>&1 | tail -1" || true
 
-echo "[devbox_sweep] tear down any stray server on port $PORT (best-effort)"
-ssh -n "$DEVBOX" "bash -lc 'M=\$(pgrep -f \"launch_server.*port $PORT\" | head -1); if [ -n \"\$M\" ]; then pkill -TERM -P \$M 2>/dev/null || true; kill -TERM \$M 2>/dev/null || true; sleep 5; fi; true'" || true
+echo "[devbox_sweep] tear down any stray server/sweep (best-effort)"
+ssh -n "$DEVBOX" "bash -lc 'pkill -TERM -f \"sglbench.argsearch.run\" 2>/dev/null || true; M=\$(pgrep -f \"launch_server.*port $PORT\" | head -1); if [ -n \"\$M\" ]; then pkill -TERM -P \$M 2>/dev/null || true; kill -TERM \$M 2>/dev/null || true; fi; sleep 5; true'" || true
 
 echo "[devbox_sweep] launch detached argsearch-run on port $PORT -> $LOG"
-retry ssh -n "$DEVBOX" "cd $REMOTE_DIR && HF_HOME=$HF_HOME_REMOTE nohup python -m sglbench.argsearch.run --port $PORT --out $OUT $* > $LOG 2>&1 & echo \$! > /sgl-workspace/sweep.pid; echo started pid \$(cat /sgl-workspace/sweep.pid)"
+ssh -n "$DEVBOX" "cd $REMOTE_DIR && HF_HOME=$HF_HOME_REMOTE nohup python -m sglbench.argsearch.run --port $PORT --out $OUT $* > $LOG 2>&1 & echo \$! > /sgl-workspace/sweep.pid; echo started pid \$(cat /sgl-workspace/sweep.pid)" || echo "[devbox_sweep] launch ssh returned nonzero; verifying the nohup'd run (not relaunching)"
+if retry ssh -n "$DEVBOX" "kill -0 \$(cat /sgl-workspace/sweep.pid 2>/dev/null) 2>/dev/null"; then
+  echo "[devbox_sweep] sweep process confirmed running"
+else
+  echo "[devbox_sweep] ERROR: sweep process not running after launch"; exit 1
+fi
 
 echo "[devbox_sweep] polling (safe to Ctrl-C / disconnect; the sweep runs detached)"
 done=0
