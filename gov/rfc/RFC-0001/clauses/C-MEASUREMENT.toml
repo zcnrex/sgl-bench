@@ -13,8 +13,8 @@ Each measured configuration MUST be warmed up before measurement and MUST be mea
 with at least two repeat runs. Each recorded result MUST capture the full reproducibility
 provenance: the configuration identity (for example a content hash of the config), the
 workload point, the measured metrics, and the execution environment (at minimum the
-SGLang commit, the kernel/library versions, and all cluster networking environment
-variables in effect). When an accuracy gate applies ([[RFC-0001:C-QUALITY-GATE]]), the
+hardware target — accelerator model and device count — the SGLang commit, the
+kernel/library versions, and all cluster networking environment variables in effect). When an accuracy gate applies ([[RFC-0001:C-QUALITY-GATE]]), the
 recorded result MUST also capture the configuration's accuracy-gate result and its
 pass/fail flag.
 

@@ -4,7 +4,8 @@
 id = "C-PRECISION-BRANCH"
 title = "Precision as a branch, not a grid axis"
 kind = "normative"
-status = "active"
+status = "superseded"
+superseded_by = "RFC-0001:C-BRANCH"
 since = "0.1.0"
 
 [content]

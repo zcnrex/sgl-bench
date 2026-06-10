@@ -27,6 +27,12 @@ equivalent sequence positions.
 The optimization objective MUST be the decode-throughput-versus-decode-latency Pareto
 frontier under the decode SLO. Configurations MUST NOT be ranked by raw throughput alone.
 
+The Pareto frontier MUST be constructed within a single branch ([[RFC-0001:C-BRANCH]]):
+only configurations belonging to the same branch MAY be placed on one comparative frontier
+and ranked against each other. Configurations from different branches MUST NOT be ranked on
+a shared frontier. Cross-branch performance comparison is reporting only and MUST NOT
+determine a configuration's eligibility or its rank.
+
 **Rationale:** For large-context serving, decode is memory-bandwidth-bound on the KV cache
 and its cost is governed by the current sequence length, not by how that length was
 reached; per-token decode latency is what a user experiences continuously, whereas TTFT is
@@ -34,4 +40,9 @@ paid once. A decode throughput averaged over a short output is dominated by warm
 transients, and over a long output is diluted by cheap early-context tokens, so the
 steady-state rate over a window at a stated context length is the only comparable signal.
 Gating on TTFT would discard configurations that sustain excellent decode merely because
-prefilling a long prompt is slow."""'''
+prefilling a long prompt is slow. A branch is a partition of non-substitutable deployments
+of one checkpoint ([[RFC-0001:C-BRANCH]]), so ranking a config from one branch above a config
+from another would recommend a deployment the operator cannot actually substitute in — a
+faster point on different hardware, or a lower-KV-precision point, would dominate one it
+cannot replace — which is why the frontier is built within a branch and cross-branch
+differences are reported, not ranked.'''

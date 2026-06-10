@@ -1,0 +1,98 @@
+#:schema ../schema/adr.schema.json
+
+[govctl]
+id = "ADR-0010"
+title = "Accuracy gate and Pareto frontier are scoped within a branch, never cross-branch"
+status = "proposed"
+date = "2026-06-10"
+refs = [
+    "RFC-0001",
+    "RFC-0001:C-QUALITY-GATE",
+    "RFC-0001:C-OBJECTIVE",
+    "RFC-0001:C-BRANCH",
+    "RFC-0001:C-BASELINE-ANCHOR",
+    "ADR-0009",
+    "RFC-0001:C-RUN-OUTPUT",
+    "ADR-0007",
+]
+
+[content]
+context = """
+[[ADR-0009]] (with [[RFC-0001:C-BRANCH]]) establishes a *branch* as a partition of
+non-substitutable deployments WITHIN one model checkpoint — keyed by the hardware target and
+the KV-cache precision (weight precision sits one level up, at the checkpoint/model). Each
+branch carries its own baseline. That raises a question the branch definition does not itself
+answer: against what reference is a configuration judged, both for the accuracy gate
+([[RFC-0001:C-QUALITY-GATE]]) and for the throughput-versus-latency Pareto frontier
+([[RFC-0001:C-OBJECTIVE]])?
+
+The reference cannot be cross-branch. Within a single checkpoint, branches can have different
+accuracy ceilings: an fp8-KV-cache branch is inherently less accurate than a
+higher-KV-precision branch on the same task (branches that differ only in hardware, by
+contrast, share an accuracy ceiling because the weights and math are identical). A gate that
+judged every branch against one common reference would fail a lower-KV-precision branch for
+being the precision it was deliberately chosen to be, not for regressing. Symmetrically, a
+single Pareto frontier mixing configurations from different branches would rank
+non-substitutable deployments against each other: a faster lower-KV-precision or
+different-hardware point would dominate a point an operator cannot actually replace it with,
+defeating the purpose of partitioning into branches.
+
+The original [[RFC-0001:C-QUALITY-GATE]] spoke of a single "pass/fail threshold … defined
+before the search," which left the comparison reference implicit and admitted a cross-branch
+reading. This decision settles it. (Cross-checkpoint comparison — choosing among weight
+precisions — is a separate, higher level and is out of this methodology's gating/ranking
+scope; see Consequences.)"""
+decision = """
+Both the accuracy gate and the Pareto frontier are scoped strictly within a branch
+(alternative 0). For accuracy, the reference is the configuration's own branch baseline: a
+configuration passes only when its accuracy is no more than a fixed tolerance below that
+same-branch baseline, with the tolerance and evaluation dataset fixed before the search. For
+performance, the frontier is built per branch; only same-branch configurations are ranked
+against one another. In neither case may another branch's baseline, tolerance, measured
+accuracy, or measured performance affect a configuration's eligibility or rank. Cross-branch
+differences remain valuable to report, but they are reporting only.
+
+A baseline-relative accuracy reference is chosen over a global or per-branch *absolute* bar
+because it is the only one that stays fair as branches differ in their inherent ceilings,
+and because every branch already carries a baseline under [[RFC-0001:C-BRANCH]], so the
+reference costs no extra measurement.
+
+The normative obligations live in [[RFC-0001:C-QUALITY-GATE]] (within-branch, baseline-
+relative gate) and [[RFC-0001:C-OBJECTIVE]] (within-branch frontier); this ADR records the
+choice and its rationale, not the clause text."""
+consequences = """
+Positive: the gate is fair across KV-cache precisions and hardware because each branch is
+held to its own baseline; every config on a frontier is mutually substitutable, so a
+recommended config is one an operator can actually deploy; cross-branch trade-offs (e.g.
+fp8 vs bf16 KV-cache accuracy, B200 vs H100 throughput) stay visible as reports without
+contaminating eligibility or ranking. The same-branch baseline used as the gate reference is
+distinct from the cross-run comparability anchor of [[RFC-0001:C-BASELINE-ANCHOR]]: the anchor
+keeps performance numbers comparable across runs, while the branch baseline is the accuracy
+reference for the gate — this decision uses the latter and does not disturb the former.
+
+Cost: a multi-branch search yields one frontier per branch rather than a single global
+ranking, so a cross-branch "which deployment overall" judgement is left to a human reading
+several frontiers; and the relative tolerance must be controlled — it is fixed before the
+search and recorded per [[RFC-0001:C-QUALITY-GATE]], since too loose a tolerance lets a
+branch drift far from a strong baseline while still passing.
+
+Neutral: cross-checkpoint comparison (choosing among weight precisions, e.g. NVFP4 vs FP8) is
+deferred as a future capability and is out of this methodology's gating/ranking scope — once
+each checkpoint has a final per-branch report, comparing across checkpoints is a trivial
+downstream step on those reports. This also aligns with the measurement isolation already
+required by [[RFC-0001:C-RUN-OUTPUT]] and [[ADR-0007]] — branches are kept apart in
+measurement identity, and now in comparison scope as well, with no new storage mechanism."""
+
+[[content.alternatives]]
+text = "Within-branch only, gate relative to same-branch baseline: The accuracy gate judges a configuration against ITS OWN branch's baseline accuracy — it passes only if its accuracy is no more than a fixed tolerance (defined before the search) below that same-branch baseline on the fixed eval dataset. The Pareto frontier is constructed within a branch; only same-branch configs are ranked against each other. Cross-branch accuracy and performance differences are reporting only and never determine eligibility or rank."
+status = "accepted"
+
+[[content.alternatives]]
+text = "Single global absolute accuracy bar plus one cross-branch frontier."
+status = "rejected"
+rejection_reason = "A global bar fails lower-ceiling branches (a lower-KV-precision config judged against a higher-KV-precision branch's numbers) for their intended precision rather than for regression; and one shared frontier ranks non-substitutable deployments against each other, so a faster lower-KV-precision/other-hardware point dominates one it cannot replace — dissolving the branch partition that ADR-0009 established."
+
+[[content.alternatives]]
+text = "Per-branch absolute accuracy bars, but still a single shared cross-branch Pareto frontier."
+status = "rejected"
+rejection_reason = "Per-branch absolute bars fix gate fairness but the shared frontier still mixes non-substitutable deployments; the ranking would recommend swapping precision or hardware as if it were a free tuning knob, which is exactly the cross-branch comparison the operator cannot act on."

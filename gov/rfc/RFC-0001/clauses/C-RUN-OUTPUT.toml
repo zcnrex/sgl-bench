@@ -12,8 +12,9 @@ text = """
 A single measurement MUST be identified by the content of its measured inputs: the
 configuration identity ([[RFC-0001:C-MEASUREMENT]]); the workload point; the benchmark tool
 used ([[RFC-0001:C-BASELINE-ANCHOR]]); and the execution environment recorded under
-[[RFC-0001:C-MEASUREMENT]] — the SGLang commit, the kernel/library versions, and the cluster
-networking environment. A timestamp MUST NOT be part of this identity; it MAY be recorded as
+[[RFC-0001:C-MEASUREMENT]] — the hardware target (accelerator model and device count),
+which is a branch key of [[RFC-0001:C-BRANCH]]; the SGLang commit; the kernel/library
+versions; and the cluster networking environment. A timestamp MUST NOT be part of this identity; it MAY be recorded as
 metadata. The recorded results of a search for one benchmark tool and one execution environment
 are its *result set*.
 
@@ -41,5 +42,7 @@ each measurement's own inputs makes extensions and re-runs cheap and reproducibl
 full execution environment (build, libraries, and networking) into the identity stops a change
 that alters the numbers — a kernel upgrade or an NCCL/transport env change — from being served a
 stale, non-comparable measurement; excluding the timestamp ensures the same measured point
-always resolves to the same identity. The build-scoped isolation this yields is what
+always resolves to the same identity. Folding the hardware target into the environment is
+what keeps a config tuned on one accelerator from being served a measurement taken on
+another, since the optimal configuration differs by hardware. The build-scoped isolation this yields is what
 [[RFC-0002:C-RANK-VALIDITY]] relies on when it scopes rankings to a revision."""

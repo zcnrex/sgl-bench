@@ -1,0 +1,45 @@
+#:schema ../../../schema/clause.schema.json
+
+[govctl]
+id = "C-BRANCH"
+title = "Search branches, not grid axes"
+kind = "normative"
+status = "active"
+
+[content]
+text = """
+The served model checkpoint is the outermost scope of a search and carries the weight
+precision (for example NVFP4, FP8, or BF16); a different weight precision is a different
+checkpoint and therefore a different model, not a branch. Within a single checkpoint, the
+methodology MUST organize the search into one or more *branches*. A branch is a partition,
+within that one checkpoint, whose members are not substitutable and which MUST NOT be
+multiplied into the focused grid as if they were candidate arguments. A branch is identified
+by its *branch keys*: the non-substitutable runtime and hardware attributes that do not
+change the checkpoint. The branch keys MUST include, at minimum, the hardware target (for
+example accelerator model and device count) and the KV-cache precision, and MAY include
+other runtime precisions (for example a runtime-selectable activation or attention dtype).
+The weight precision MUST NOT be a branch key, because it changes the checkpoint.
+
+Each branch MUST have its own baseline, and MAY have its own fixed-argument set and candidate
+set. A per-branch baseline is scoped within its branch and MUST NOT replace the cross-run
+comparability anchor required by [[RFC-0001:C-BASELINE-ANCHOR]]. The accuracy gate of
+[[RFC-0001:C-QUALITY-GATE]] MUST be evaluated at least once per branch.
+
+KV-cache precision, and any other runtime precision, MAY be modeled either as a branch key —
+with its own baseline and accuracy-gate validation — or as an accuracy-active candidate
+argument gated per configuration under [[RFC-0001:C-QUALITY-GATE]]. The search MUST record,
+for each such runtime precision, which treatment it chose. A branch key that is a physical attribute, such as the hardware
+target, MUST also be recorded in the execution environment of [[RFC-0001:C-RUN-OUTPUT]] so
+that measurements taken on different hardware are isolated rather than conflated under one
+measurement identity.
+
+**Rationale:** Branch members answer "which deployment of this checkpoint is this?" not
+"which arg is best?": a different hardware target or KV-cache precision is not a drop-in
+substitute, so folding them into the grid multiplies the search while comparing
+configurations that cannot be exchanged. Weight precision is excluded from the branch keys
+because it is not a runtime choice at all — it is baked into the weights, so it lives one
+level up at the model/checkpoint, where distinct checkpoints are searched and recorded
+separately. KV-cache precision is left to the author's discretion because a single extra
+dtype is sometimes cheaper to gate per configuration than to stand up as a full branch.
+Recording a physical branch key in the execution environment is what keeps a config tuned on
+one accelerator from being served a stale measurement taken on another."""

@@ -1,0 +1,103 @@
+#:schema ../schema/adr.schema.json
+
+[govctl]
+id = "ADR-0009"
+title = "Generalize the precision branch into a within-checkpoint search branch keyed by hardware and KV-cache precision"
+status = "proposed"
+date = "2026-06-10"
+refs = [
+    "RFC-0001",
+    "ADR-0007",
+    "RFC-0001:C-BRANCH",
+    "RFC-0001:C-PRECISION-BRANCH",
+    "RFC-0001:C-RUN-OUTPUT",
+    "RFC-0001:C-MEASUREMENT",
+    "RFC-0001:C-QUALITY-GATE",
+    "RFC-0001:C-BASELINE-ANCHOR",
+]
+
+[content]
+context = """
+[[RFC-0001:C-PRECISION-BRANCH]] treats numeric precision (NVFP4 vs FP8) as a top-level
+*branch* of the search rather than a grid axis, and its rationale ties a branch to a
+distinct checkpoint: "distinct precisions typically correspond to different checkpoints
+and fundamentally different deployments." Two facts break that conflation:
+
+1. **Hardware.** For the same checkpoint and the same numeric precision, the optimal
+   server-arg configuration differs by accelerator (GPU SKU, device count, topology).
+   A config tuned on one hardware target is not substitutable onto another, yet today
+   the methodology has no top-level partition for it.
+
+2. **KV-cache precision.** For one checkpoint, the KV-cache dtype (e.g. fp8 vs bf16 KV
+   cache) is a runtime server flag that changes both accuracy and performance *without*
+   changing the weights. It is a precision dimension that is not carried by the
+   checkpoint name, so a branch concept welded to "distinct checkpoint" cannot express
+   it.
+
+[[ADR-0007]] already anticipates same-checkpoint branches — it drops the branch from the
+output path because "the checkpoint name already encodes the precision," and explicitly
+allows that "branches that happen to share a checkpoint accumulate in the same model
+directory," disambiguated by config-hash plus execution environment. So the path and
+measurement-identity machinery already tolerates branches that share a checkpoint; only
+the search-organization vocabulary lags.
+
+The conclusion: "precision branch" is too narrow a name, and it sits at the wrong level.
+Weight precision is not a partition *within* a deployment — it defines the checkpoint, hence
+the model, one level above (the `out/<model>/` scope per [[ADR-0007]]). The real branch
+concept is the partition of *non-substitutable deployments of one checkpoint*: the attributes
+that need explicit branch keys are the runtime/hardware ones that do not change the
+checkpoint — the hardware target and the KV-cache precision."""
+decision = """
+Adopt the generalized branch (alternative 0), as a strictly within-checkpoint concept.
+"Precision branch" becomes "branch": a partition WITHIN a single model checkpoint whose
+members are not substitutable and are never multiplied into the focused grid. The model
+checkpoint is the outermost scope and carries the weight precision — a different weight
+precision is a different checkpoint, hence a different model, not a branch. A branch is keyed
+only by the non-substitutable runtime and hardware attributes that do NOT change the
+checkpoint: at minimum the hardware target and the KV-cache precision, and optionally other
+runtime precisions. Weight precision is therefore not a branch key.
+
+KV-cache precision is left to the author's discretion (branch key versus accuracy-active
+candidate) because a single extra dtype is sometimes cheaper to gate per configuration than
+to stand up as a full branch. This is chosen over the rejected alternatives because it
+introduces exactly one partition vocabulary rather than two overlapping ones, and because it
+expresses same-checkpoint partitions (different hardware, different KV-cache precision) that
+the precision-equals-checkpoint framing could not. The hardware key is also a physical
+measurement attribute, so isolating measurements by hardware is consistent with the
+content-addressed identity of [[RFC-0001:C-RUN-OUTPUT]] rather than a new mechanism.
+
+The normative obligations this decision creates live in [[RFC-0001:C-BRANCH]] (with the
+supporting enumeration in [[RFC-0001:C-MEASUREMENT]] / [[RFC-0001:C-RUN-OUTPUT]] and the
+per-branch gate in [[RFC-0001:C-QUALITY-GATE]]); this ADR records the choice and its
+rationale, not the clause text."""
+consequences = """
+Positive: one coherent partition concept replaces an implicit precision-only one;
+same-checkpoint branches (different hardware, different KV-cache precision) become
+first-class instead of unrepresentable; measurement isolation across hardware is
+guaranteed because the accelerator is folded into the execution-environment identity; and
+the author keeps the flexibility to grid KV-cache precision when a per-config gate is
+cheaper than a separate branch.
+
+Cost: the clause rename leaves a superseded `C-PRECISION-BRANCH` whose id remains
+resolvable for historical references in already-done work items; the change is
+behavior-affecting, so an RFC version bump and re-sign are required at the /gov handoff;
+and the config schema grows a small branch-key surface (the `PrecisionBranch` schema
+becomes a `Branch` schema carrying explicit keys).
+
+Neutral: the [[ADR-0007]] output layout is unchanged — it already tolerates branches that
+share a checkpoint by disambiguating on config-hash plus execution environment, so no path
+restructuring follows from this decision."""
+
+[[content.alternatives]]
+text = "Generalize precision-branch into a general 'branch' that is strictly within-checkpoint: the model checkpoint (carrying weight precision) is the outermost scope, and a branch is a partition WITHIN one checkpoint whose members are not substitutable and must never be multiplied into the grid. A branch is keyed only by non-substitutable runtime/hardware attributes that do not change the checkpoint — at minimum the hardware target and KV-cache precision, optionally other runtime precisions; weight precision is NOT a branch key. Each branch keeps its own baseline and accuracy-gate validation, and may keep its own fixed-arg and candidate sets. KV-cache precision MAY be a branch key OR an accuracy-active candidate grid axis at the author's discretion (recorded). Hardware branch keys are physical, so they are ALSO recorded in the execution environment (C-RUN-OUTPUT) to isolate measurements. Rename C-PRECISION-BRANCH -> C-BRANCH."
+status = "accepted"
+
+[[content.alternatives]]
+text = "Keep precision-branch tied to checkpoint; add hardware as a separate parallel partition concept; leave KV-cache precision unmodeled."
+status = "rejected"
+rejection_reason = "Creates two overlapping partition vocabularies (precision-branch and hardware-partition) that the search author must reconcile; still forbids same-checkpoint branches, so KV-cache precision has nowhere to live; and the branch-equals-checkpoint conflation that motivated this change persists unaddressed."
+
+[[content.alternatives]]
+text = "Treat hardware and KV-cache precision as ordinary candidate grid axes inside the existing search."
+status = "rejected"
+rejection_reason = "Multiplies the focused grid by non-substitutable points and dissolves the per-branch baseline and the once-per-branch accuracy-gate guarantee of C-QUALITY-GATE; hardware is physical and cannot be swept as a runtime arg against one live server at all, so it cannot be a candidate axis even in principle."

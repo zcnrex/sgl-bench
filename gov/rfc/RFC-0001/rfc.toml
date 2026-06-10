@@ -20,6 +20,7 @@ title = "Specification"
 clauses = [
     "clauses/C-SCOPE.toml",
     "clauses/C-LOOP-STRUCTURE.toml",
+    "clauses/C-BRANCH.toml",
     "clauses/C-PRECISION-BRANCH.toml",
     "clauses/C-CONFIG-SOURCE.toml",
     "clauses/C-SEARCH-STRATEGY.toml",
