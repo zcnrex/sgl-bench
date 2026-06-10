@@ -143,6 +143,17 @@ class SchemaTest(unittest.TestCase):
         self.assertEqual(cfg.quality_gate.metric, "accuracy")
         self.assertEqual(cfg.quality_gate.direction, "higher")
 
+    def test_candidate_accuracy_invariant_default_false(self):
+        cfg = _config({
+            "candidate": [
+                {"name": "a", "values": [1, 2]},
+                {"name": "b", "values": [3, 4], "accuracy_invariant": True},
+            ],
+            "baseline": {"a": 1, "b": 3},
+        })
+        cands = {c.name: c.accuracy_invariant for c in cfg.branch("b").candidate}
+        self.assertEqual(cands, {"a": False, "b": True})
+
     def test_quality_gate_rejects_bad_direction(self):
         with self.assertRaises(ValidationError):
             SearchConfig.model_validate({

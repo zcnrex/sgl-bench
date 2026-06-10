@@ -12,7 +12,7 @@ restart-required configs), and one or more `precision_branches`. Within a branch
 | Bucket | Meaning |
 | --- | --- |
 | `fixed` | known-best args, never varied |
-| `candidate` | args to vary (≤ 10); each has a `values` list |
+| `candidate` | args to vary (≤ 10); each has a `values` list and optional `accuracy_invariant` |
 | `constraints` | illegal-combination rules (`when` → `forbid` / `require`) |
 | `baseline` | one starting value per candidate; must itself be constraint-valid |
 | `focused_grid` | optional: the admitted grid `args`, the interaction `rationale`, and OFAT-best `pins` for the non-gridded candidates (RFC-0001:C-SEARCH-STRATEGY) |
@@ -67,6 +67,13 @@ The optional `quality_gate` block defines the **accuracy acceptance gate**
 the search and evaluated per branch. A config below the bar is excluded from the acceptable
 results at every stage but still recorded and flagged (`quality_pass`) for trade-off
 inspection — see [objective.md](objective.md).
+
+Each candidate may set **`accuracy_invariant: true`** to declare that its values change
+performance but not the model's outputs (scheduling / memory-split / parallelism levers);
+the default `false` is the fail-safe (accuracy-active). A search that varies only
+accuracy-invariant candidates skips the per-config gate — `argsearch-run` evaluates the
+gate on the baseline + a spot-check config and reuses that accuracy for the rest, instead
+of re-running gsm8k on every numerically-identical permutation (RFC-0001:C-QUALITY-GATE).
 
 ## Validate
 

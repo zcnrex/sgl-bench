@@ -1,0 +1,38 @@
+#:schema ../schema/work.schema.json
+
+[govctl]
+id = "WI-2026-06-09-013"
+title = "Implement accuracy-invariant arg classification + invariant-search gate skip (RFC-0001:C-QUALITY-GATE v0.4.0)"
+status = "done"
+created = "2026-06-09"
+started = "2026-06-09"
+completed = "2026-06-09"
+refs = ["RFC-0001"]
+
+[content]
+description = "Honor RFC-0001:C-QUALITY-GATE v0.4.0 in code: record each candidate's accuracy_invariant classification in the config schema (default false = accuracy-active, fail-safe), and let a search that varies only accuracy-invariant args skip per-config accuracy evaluation — evaluating the baseline + a spot-check config and reusing the baseline accuracy for the rest — instead of gating every config."
+
+[[content.acceptance_criteria]]
+text = "govctl check passes"
+status = "done"
+category = "chore"
+
+[[content.acceptance_criteria]]
+text = "CandidateArg gains accuracy_invariant (default false); seed config classifies its candidates; classification is recorded/inspectable"
+status = "done"
+category = "added"
+
+[[content.acceptance_criteria]]
+text = "a helper detects an accuracy-invariant-only search over the generated points"
+status = "done"
+category = "added"
+
+[[content.acceptance_criteria]]
+text = "run_search supports evaluating accuracy only for designated configs (baseline + spot-check) and reusing it for the rest; run CLI auto-applies the skip for invariant searches and per-config eval otherwise"
+status = "done"
+category = "added"
+
+[[content.acceptance_criteria]]
+text = "GPU-free tests cover the classification, invariant-search detection, and the evaluate-subset reuse"
+status = "done"
+category = "chore"

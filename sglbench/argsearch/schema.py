@@ -40,6 +40,7 @@ def _key(v: Scalar):
 class CandidateArg(BaseModel):
     name: str
     values: list[Scalar] = Field(min_length=1)
+    accuracy_invariant: bool = False
 
     @model_validator(mode="after")
     def _unique_values(self) -> "CandidateArg":

@@ -75,23 +75,30 @@ def run_search(
     repeats: int = MIN_REPEATS,
     gate: QualityGate | None = None,
     evaluate: Callable[[ServerSession], dict[str, float]] | None = None,
+    evaluate_hashes: set[str] | None = None,
 ) -> list[MeasurementResult]:
     """Drive the outer/inner search and return one MeasurementResult per inner point.
 
-    When a `gate` and an `evaluate` callable are supplied, accuracy is scored once per
-    launched configuration and every inner-point record for that config is stamped with
-    the score and the gate verdict ([[RFC-0001:C-QUALITY-GATE]]).
+    When a `gate` and an `evaluate` callable are supplied, accuracy is scored per launched
+    configuration and every inner-point record for that config is stamped with the score
+    and the gate verdict ([[RFC-0001:C-QUALITY-GATE]]). When `evaluate_hashes` is given,
+    accuracy is scored only for configs whose hash is in the set (the baseline + spot-check
+    of an accuracy-invariant search) and the most recent score is reused for the rest.
     """
     workload = list(workload)
+    gating = gate is not None and evaluate is not None
     results: list[MeasurementResult] = []
+    last_accuracy: dict[str, float] | None = None
     for cp in points:
         session = manager.launch(cp.args)
         try:
             accuracy = None
             quality_pass = None
-            if gate is not None and evaluate is not None:
-                accuracy = evaluate(session)
-                quality_pass = gate.passes(accuracy.get(gate.metric))
+            if gating:
+                if evaluate_hashes is None or cp.config_hash in evaluate_hashes:
+                    last_accuracy = evaluate(session)
+                accuracy = last_accuracy
+                quality_pass = gate.passes(accuracy.get(gate.metric)) if accuracy else None
             for wp in workload:
                 res = measure_point(
                     session.client,

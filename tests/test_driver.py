@@ -137,5 +137,22 @@ class GateStampingTest(unittest.TestCase):
         self.assertTrue(all(r.accuracy == {"accuracy": 0.3} and not r.quality_pass for r in bad))
 
 
+class EvaluateHashesTest(unittest.TestCase):
+    def test_only_designated_configs_evaluated_rest_reuse(self):
+        mgr = FakeManager()
+        eval_calls = []
+
+        def evaluate(session):
+            eval_calls.append(session.args["attention-backend"])
+            return {"accuracy": 0.97}
+
+        hashes = {POINTS[0].config_hash}
+        results = run_search(POINTS, workload_points(AXES), mgr, gate=GATE,
+                             evaluate=evaluate, evaluate_hashes=hashes)
+        self.assertEqual(eval_calls, ["trtllm_mha"])
+        self.assertTrue(all(r.accuracy == {"accuracy": 0.97} for r in results))
+        self.assertTrue(all(r.quality_pass for r in results))
+
+
 if __name__ == "__main__":
     unittest.main()

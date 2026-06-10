@@ -10,6 +10,7 @@ from .schema import (
 )
 from .generate import (
     ConfigPoint,
+    accuracy_invariant_search,
     args_to_cli,
     config_hash,
     focused_grid_manifest,
@@ -18,6 +19,7 @@ from .generate import (
     grid_args_for,
     is_valid,
     load_config,
+    varied_args,
     write_dir,
     write_grid_manifest,
 )
@@ -70,6 +72,7 @@ __all__ = [
     "QualityGate",
     "SearchConfig",
     "ConfigPoint",
+    "accuracy_invariant_search",
     "args_to_cli",
     "config_hash",
     "focused_grid_manifest",
@@ -78,6 +81,7 @@ __all__ = [
     "grid_args_for",
     "is_valid",
     "load_config",
+    "varied_args",
     "write_dir",
     "write_grid_manifest",
     "AccuracyEvaluator",

@@ -90,18 +90,24 @@ precision_branches:
         values: [triton, flashinfer]
       - name: mamba-scheduler-strategy  # slots reserved per running req (ratio); couples with radix + mem-fraction
         values: [no_buffer, extra_buffer, extra_buffer_lazy]
+        accuracy_invariant: true
       - name: mamba-ssm-dtype           # bf16 ~halves ssm-state vs fp32 -> bs-cap lever
         values: [float32, bfloat16]
       - name: mamba-full-memory-ratio   # mamba-vs-KV split inside rest_memory -> bs-cap lever
         values: [0.7, 0.9]
+        accuracy_invariant: true
       - name: ep-size                   # MoE expert parallelism; coupled with moe-a2a-backend
         values: [1, 4]
+        accuracy_invariant: true
       - name: moe-a2a-backend
         values: [none, deepep]
+        accuracy_invariant: true
       - name: dp-size                   # attention data parallelism; coupled with enable-dp-attention
         values: [1, 4]
+        accuracy_invariant: true
       - name: enable-dp-attention       # no-value boolean flag; coupled with dp-size
         values: [false, true]
+        accuracy_invariant: true
 
     # Admitted focused-grid selection (C-SEARCH-STRATEGY). The non-gridded candidates are
     # pinned to their OFAT-best value; the coupled pairs are swept jointly below.

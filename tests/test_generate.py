@@ -168,6 +168,31 @@ class GenerateTest(unittest.TestCase):
         self.assertNotIn("moe-a2a-backend", cli)         # baseline value "none" -> omitted
 
 
+class InvariantSearchTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.branch = load_config(CONFIG).branch("nvfp4")
+
+    def test_ofat_over_active_args_is_not_invariant(self):
+        from sglbench.argsearch.generate import accuracy_invariant_search
+        self.assertFalse(accuracy_invariant_search(self.branch, generate_ofat(self.branch)))
+
+    def test_focused_grid_over_neutral_pairs_is_invariant(self):
+        from sglbench.argsearch.generate import accuracy_invariant_search
+        self.assertTrue(accuracy_invariant_search(self.branch, generate_grid(self.branch)))
+
+    def test_varied_args_detects_changing_keys(self):
+        from sglbench.argsearch.generate import varied_args
+        pts = generate_grid(self.branch)
+        v = varied_args(pts)
+        self.assertEqual(v & set(self.branch.candidate_names),
+                         {"ep-size", "moe-a2a-backend", "dp-size", "enable-dp-attention"})
+
+    def test_single_config_is_vacuously_invariant(self):
+        from sglbench.argsearch.generate import accuracy_invariant_search
+        self.assertTrue(accuracy_invariant_search(self.branch, generate_ofat(self.branch)[:1]))
+
+
 class GridGateEnforcementTest(unittest.TestCase):
     def _setup(self, tmp, quality_pass):
         cfgp = Path(tmp) / "c.yaml"

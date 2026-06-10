@@ -12,7 +12,7 @@ import argparse
 import sys
 
 from .driver import run_search, workload_points, write_results
-from .generate import generate_grid, generate_ofat, load_config
+from .generate import accuracy_invariant_search, generate_grid, generate_ofat, load_config
 from .objective import build_frontier
 from .sglang_adapter import (
     GSM8KEvaluator,
@@ -106,7 +106,18 @@ def main(argv=None) -> int:
         evaluate = lambda session: evaluator.evaluate()
         print(f"accuracy gate: gsm8k x{a.gsm8k_examples}  ({gate.metric} >= {gate.threshold})")
 
-    results = run_search(points, workload, manager, repeats=a.repeats, gate=gate, evaluate=evaluate)
+    evaluate_hashes = None
+    if gate is not None and accuracy_invariant_search(branch, points):
+        evaluate_hashes = {points[0].config_hash, points[-1].config_hash}
+        print(
+            f"  accuracy-invariant search: per-config eval skipped; "
+            f"evaluating baseline + spot-check ({len(evaluate_hashes)} config(s))"
+        )
+
+    results = run_search(
+        points, workload, manager,
+        repeats=a.repeats, gate=gate, evaluate=evaluate, evaluate_hashes=evaluate_hashes,
+    )
     out = write_results(results, a.out)
     print(f"wrote {len(results)} records to {out}")
 

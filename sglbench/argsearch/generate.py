@@ -144,6 +144,26 @@ def write_grid_manifest(manifest: dict, out_dir) -> Path:
     return path
 
 
+def varied_args(points) -> set:
+    """Argument names whose value is not identical across all `points`."""
+    points = list(points)
+    if len(points) < 2:
+        return set()
+    keys: set = set()
+    for cp in points:
+        keys |= set(cp.args)
+    return {k for k in keys if len({_key(cp.args.get(k)) for cp in points}) > 1}
+
+
+def accuracy_invariant_search(branch: PrecisionBranch, points) -> bool:
+    """True when every candidate argument that varies across `points` is accuracy-invariant
+    ([[RFC-0001:C-QUALITY-GATE]]). A single-config search varies nothing and is vacuously
+    invariant. Non-invariant or unknown candidates make the search accuracy-active."""
+    invariant = {c.name for c in branch.candidate if c.accuracy_invariant}
+    varied_candidates = varied_args(points) & set(branch.candidate_names)
+    return varied_candidates.issubset(invariant)
+
+
 def write_dir(points, out_dir) -> Path:
     outdir = Path(out_dir)
     outdir.mkdir(parents=True, exist_ok=True)
