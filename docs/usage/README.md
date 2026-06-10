@@ -11,6 +11,7 @@ them through an outer/inner loop → measure each workload point with full prove
 | 3. Drive outer/inner search loop | [driver.md](driver.md) | `driver.py`, `sglang_adapter.py` |
 | 4. Measure a workload point | [measure.md](measure.md) | `measure.py` |
 | 5. Pareto frontier under the SLO | [objective.md](objective.md) | `objective.py`, `metrics.py` |
+| 6. Candidate-vs-baseline deltas | [compare.md](compare.md) | `compare.py`, `metrics.py` |
 | Run it live on a server (CLI) | [run.md](run.md) | `run.py`, `sglang_adapter.py` |
 
 The accuracy gate (RFC-0001:C-QUALITY-GATE), the bench transports (`bench_one_batch_server`

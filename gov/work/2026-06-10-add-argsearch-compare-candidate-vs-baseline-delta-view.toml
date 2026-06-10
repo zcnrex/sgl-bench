@@ -1,0 +1,28 @@
+#:schema ../schema/work.schema.json
+
+[govctl]
+id = "WI-2026-06-10-005"
+title = "Add argsearch-compare candidate-vs-baseline delta view"
+status = "done"
+created = "2026-06-10"
+started = "2026-06-10"
+completed = "2026-06-10"
+refs = ["RFC-0001:C-OBJECTIVE"]
+
+[content]
+description = "Add a reusable per-concurrency candidate-vs-baseline comparison view as the companion to argsearch-frontier. The frontier reports the non-dominated set; this reports how far each single-arg OFAT change moves decode throughput / per-token latency / accuracy relative to the baseline reference point (generate_ofat(branch)[0], resolved from the config, never hard-coded). Descriptive read of measured results; applies no SLO/accuracy gate."
+
+[[content.acceptance_criteria]]
+text = "argsearch-compare prints per-concurrency baseline-relative decode/ptok/ttft/accuracy deltas; baseline resolved from generate_ofat(branch)[0]"
+status = "done"
+category = "added"
+
+[[content.acceptance_criteria]]
+text = "registered as pyproject entry point argsearch-compare + usage doc docs/usage/compare.md + README index row"
+status = "done"
+category = "added"
+
+[[content.acceptance_criteria]]
+text = "tests/test_compare.py covers delta sign, per-concurrency blocks, and missing-candidate skip; full suite delta is +3 passing"
+status = "done"
+category = "chore"
