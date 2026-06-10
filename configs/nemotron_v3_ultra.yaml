@@ -7,10 +7,9 @@
 # checkpoint is seeded; precision is a branch, not a candidate axis
 # ([[RFC-0001:C-PRECISION-BRANCH]]).
 
-model: nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-NVFP4
+model: nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-BF16
 
 workload_axes:
-  context_length: 131072
   # Workload cost-role staging ([[RFC-0001:C-WORKLOAD-STAGING]]).
   # iter: short-output, long-context — drives the arg search; the tail decode window gives
   # steady-state decode throughput at that context length.
@@ -25,9 +24,8 @@ workload_axes:
   concurrency: [1, 8, 32, 128, 256, 512]
   # Steady-state decode-throughput window ([[RFC-0001:C-OBJECTIVE]]). bench_one_batch_server
   # exposes the single tail step (last_gen_throughput); a true multi-step window needs a
-  # percentile/profiling transport (genai-bench).
-  decode_window_steps: 1
-  note: "Swept against a live server (genai-bench / bench_one_batch_server); not part of restart-required permutations."
+  # percentile/profiling transport (genai-bench). Swept against a live server; not part of
+  # the restart-required permutations.
 
 # SLO for the decode-first Pareto frontier ([[RFC-0001:C-OBJECTIVE]]). Defined before the
 # search. The GATE is decode per-token latency (ITL); TTFT is a report-only target and never
@@ -75,7 +73,7 @@ precision_branches:
       attention-backend: trtllm_mha
       mamba-backend: flashinfer
       mamba-scheduler-strategy: extra_buffer_lazy
-      mamba-ssm-dtype: bfloat16
+      mamba-ssm-dtype: float32
       mamba-full-memory-ratio: 0.9
       ep-size: 1
       moe-a2a-backend: none
@@ -122,7 +120,7 @@ precision_branches:
         attention-backend: trtllm_mha
         mamba-backend: flashinfer
         mamba-scheduler-strategy: extra_buffer_lazy
-        mamba-ssm-dtype: bfloat16
+        mamba-ssm-dtype: float32
         mamba-full-memory-ratio: 0.9
 
     # Illegal combinations pruned before launch (C-CONFIG-SOURCE). ep-size/moe-a2a-backend
