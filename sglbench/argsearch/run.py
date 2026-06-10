@@ -10,13 +10,13 @@ baseline-relative accuracy gate ([[RFC-0001:C-QUALITY-GATE]]).
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 from datetime import datetime, timezone
 
 from pathlib import Path
 
 from .driver import result_line, run_search, workload_points
+from .jsonl import json_line, read_jsonl, write_json
 from .generate import (
     DEFAULT_OUT_DIR,
     accuracy_invariant_search,
@@ -52,15 +52,12 @@ def run_dir(base, model: str, transport: str, env_digest: str) -> Path:
 
 def read_skip_keys(results_path: Path) -> set[tuple[str, str]]:
     """`(config_hash, label)` of already-recorded measurements ([[RFC-0001:C-RUN-OUTPUT]])."""
-    keys: set[tuple[str, str]] = set()
     if not results_path.exists():
-        return keys
-    for line in results_path.read_text().splitlines():
-        if not line.strip():
-            continue
-        rec = json.loads(line)
-        keys.add((rec.get("config_hash", ""), rec.get("label", "")))
-    return keys
+        return set()
+    return {
+        (rec.get("config_hash", ""), rec.get("label", ""))
+        for rec in read_jsonl(results_path)
+    }
 
 
 def select_points(branch, mode: str, limit: int, only_config: str | None = None):
@@ -249,9 +246,9 @@ def main(argv=None) -> int:
         "environment": environment,
         "measured_at": datetime.now(timezone.utc).isoformat(),
     }
-    (target_dir / "manifest.json").write_text(json.dumps(manifest, indent=2, default=str) + "\n")
+    write_json(manifest, target_dir / "manifest.json")
     with (target_dir / "manifests.jsonl").open("a") as mf:
-        mf.write(json.dumps(manifest, default=str) + "\n")
+        mf.write(json_line(manifest) + "\n")
 
     written = 0
     with out_path.open("a") as rf:
@@ -276,9 +273,7 @@ def main(argv=None) -> int:
                 "accuracy": spot_res.accuracy,
                 "quality_pass": spot_res.quality_pass,
             }
-            (target_dir / "manifest.json").write_text(
-                json.dumps(manifest, indent=2, default=str) + "\n"
-            )
+            write_json(manifest, target_dir / "manifest.json")
 
     if a.frontier and cfg.slo is not None:
         passing, frontier = build_frontier(

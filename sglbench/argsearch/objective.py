@@ -8,13 +8,13 @@ Pareto frontier (decode throughput up, ITL down), never ranked by raw throughput
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
 from . import metrics as M
 from .generate import DEFAULT_RESULTS, _assemble, config_hash, load_config
+from .jsonl import read_jsonl, write_jsonl
 from .schema import SLO, Branch, QualityGate
 
 DEFAULT_FRONTIER = "out/frontier.jsonl"
@@ -35,8 +35,7 @@ class FrontierEntry:
 
 
 def load_results(path) -> list[dict]:
-    text = Path(path).read_text()
-    return [json.loads(line) for line in text.splitlines() if line.strip()]
+    return read_jsonl(path)
 
 
 def _context_length(workload: dict) -> int:
@@ -212,12 +211,7 @@ def gate_status(
 
 
 def write_frontier(frontier: list[FrontierEntry], out_path) -> Path:
-    path = Path(out_path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w") as f:
-        for e in frontier:
-            f.write(json.dumps(asdict(e), default=str) + "\n")
-    return path
+    return write_jsonl((asdict(e) for e in frontier), out_path)
 
 
 def main(argv=None) -> int:

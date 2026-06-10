@@ -19,7 +19,7 @@ import hashlib
 import json
 import os
 import re
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass
 from importlib import metadata
 from statistics import fmean, median
 from typing import Protocol, runtime_checkable
@@ -97,7 +97,6 @@ class BenchClient(Protocol):
         """Run one recorded pass and return its metrics."""
 
 
-@runtime_checkable
 class AccuracyEvaluator(Protocol):
     """Accuracy-gate evaluator bound to a live server ([[RFC-0001:C-QUALITY-GATE]]).
 
@@ -253,17 +252,19 @@ def environment_digest(environment: dict) -> str:
 _SLUG_SAFE = re.compile(r"[^A-Za-z0-9._-]+")
 
 
+def _slug(s, fallback: str) -> str:
+    s = _SLUG_SAFE.sub("-", str(s)).strip("-")
+    return s or fallback
+
+
 def model_slug(name: str) -> str:
     """Filesystem-safe single-segment slug of a model/checkpoint name."""
-    s = _SLUG_SAFE.sub("-", str(name)).strip("-")
-    return s or "model"
+    return _slug(name, "model")
 
 
 def label_slug(s: str) -> str:
     """Filesystem-safe slug of a config label (`=` becomes `__`)."""
-    s = str(s).replace("=", "__")
-    s = _SLUG_SAFE.sub("-", s).strip("-")
-    return s or "x"
+    return _slug(str(s).replace("=", "__"), "x")
 
 
 def _aggregate(runs: list[dict[str, float]]) -> dict:

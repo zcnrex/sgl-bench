@@ -20,6 +20,7 @@ from pathlib import Path
 
 import yaml
 
+from .jsonl import json_line, write_json
 from .measure import label_slug, model_slug
 from .schema import Branch, Constraint, SearchConfig, _key
 
@@ -142,10 +143,7 @@ def focused_grid_manifest(branch: Branch, grid_args, points) -> dict:
 
 
 def write_grid_manifest(manifest: dict, out_dir) -> Path:
-    path = Path(out_dir) / "focused_grid.json"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(manifest, indent=2, default=str) + "\n")
-    return path
+    return write_json(manifest, Path(out_dir) / "focused_grid.json")
 
 
 def varied_args(points) -> set:
@@ -246,8 +244,8 @@ def write_dir(points, base=DEFAULT_OUT_DIR, *, model: str | None = None, mode: s
         for n, cp in enumerate(points, 1):
             rec = asdict(cp)
             fname = f"{n:02d}-{label_slug(cp.label)}-{cp.config_hash[:8]}.json"
-            (outdir / fname).write_text(json.dumps(rec, indent=2, default=str) + "\n")
-            idx.write(json.dumps(rec, default=str) + "\n")
+            write_json(rec, outdir / fname)
+            idx.write(json_line(rec) + "\n")
     return outdir
 
 

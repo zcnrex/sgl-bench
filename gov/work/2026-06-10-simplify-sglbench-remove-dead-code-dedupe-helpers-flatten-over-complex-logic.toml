@@ -3,39 +3,42 @@
 [govctl]
 id = "WI-2026-06-10-008"
 title = "Simplify sglbench: remove dead code, dedupe helpers, flatten over-complex logic"
-status = "queue"
+status = "done"
 created = "2026-06-10"
+started = "2026-06-10"
+completed = "2026-06-10"
 refs = ["RFC-0001"]
 
 [content]
 description = "Post-v0.6.0 cleanup pass over sglbench/: remove dead code, deduplicate repeated helpers, and simplify over-complex logic without changing observable behavior. Targets identified by survey: duplicated JSONL parsing (objective.load_results vs sglang_adapter.parse_result_jsonl), repeated json.dumps-write pattern (generate.py, run.py, objective.py), near-identical subprocess wrapper stubs and BenchClient._run bodies in sglang_adapter.py, slug-helper duplication and unused @runtime_checkable decorators in measure.py, and accuracy-gating conditionals embedded in driver.run_search. No behavior change; all existing tests must pass unmodified."
+notes = ["Do not remove @runtime_checkable from BenchClient/ServerSession/ServerManager: tests assertIsInstance against these protocols, so the decorators are load-bearing; only AccuracyEvaluator's was unused"]
 
 [[content.acceptance_criteria]]
 text = "Full test suite passes with no test modifications (behavior-preserving refactor)"
-status = "pending"
+status = "done"
 category = "chore"
 
 [[content.acceptance_criteria]]
 text = "govctl check passes"
-status = "pending"
+status = "done"
 category = "chore"
 
 [[content.acceptance_criteria]]
 text = "Single shared JSONL read/write helper used by objective.py, sglang_adapter.py, generate.py, and run.py; duplicated parsing/serialization removed"
-status = "pending"
+status = "done"
 category = "chore"
 
 [[content.acceptance_criteria]]
 text = "sglang_adapter.py subprocess-runner stubs and BenchClient._run temp-dir/parse boilerplate unified into one shared path"
-status = "pending"
+status = "done"
 category = "chore"
 
 [[content.acceptance_criteria]]
 text = "Dead code removed: unused @runtime_checkable decorators in measure.py and any remaining pre-v0.6.0 schema compatibility handling"
-status = "pending"
+status = "done"
 category = "chore"
 
 [[content.acceptance_criteria]]
 text = "Accuracy-gating conditionals in driver.run_search extracted into a named helper; the main search loop contains no nested accuracy-gate branches"
-status = "pending"
+status = "done"
 category = "chore"

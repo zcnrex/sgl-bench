@@ -14,12 +14,12 @@ and benchmark transport.
 
 from __future__ import annotations
 
-import json
 from dataclasses import asdict
 from pathlib import Path
 from typing import Callable, Iterable, Protocol, runtime_checkable
 
 from .generate import ConfigPoint
+from .jsonl import json_line, write_jsonl
 from .measure import (
     MIN_REPEATS,
     BenchClient,
@@ -67,6 +67,43 @@ def workload_points(axes: dict, role: str = "iter") -> list[WorkloadPoint]:
     ]
 
 
+class _AccuracyGater:
+    """Per-launched-config accuracy scoring and gate stamping ([[RFC-0001:C-QUALITY-GATE]]).
+
+    Evaluates the live server for configs selected by `evaluate_hashes` (all configs when
+    None), reuses the most recent score for the rest, tracks the branch baseline score, and
+    returns the (accuracy, quality_pass) stamp for every record of the config. Inactive
+    (stamps None/None) unless both a gate and an evaluate callable are supplied.
+    """
+
+    def __init__(
+        self,
+        gate: QualityGate | None,
+        evaluate: Callable[[ServerSession], dict[str, float]] | None,
+        evaluate_hashes: set[str] | None,
+    ) -> None:
+        self._gate = gate
+        self._evaluate = evaluate
+        self._hashes = evaluate_hashes
+        self._last_accuracy: dict[str, float] | None = None
+        self._baseline_score: float | None = None
+
+    def stamp(
+        self, cp: ConfigPoint, session: ServerSession
+    ) -> tuple[dict[str, float] | None, bool | None]:
+        if self._gate is None or self._evaluate is None:
+            return None, None
+        if self._hashes is None or cp.config_hash in self._hashes:
+            self._last_accuracy = self._evaluate(session)
+        accuracy = self._last_accuracy
+        score = accuracy.get(self._gate.metric) if accuracy else None
+        if cp.label == "baseline" and score is not None:
+            self._baseline_score = score
+        if self._baseline_score is None:
+            return accuracy, None
+        return accuracy, self._gate.passes(score, self._baseline_score)
+
+
 def run_search(
     points: Iterable[ConfigPoint],
     workload: Iterable[WorkloadPoint],
@@ -93,11 +130,9 @@ def run_search(
     skipped, making an extended search incremental ([[RFC-0001:C-RUN-OUTPUT]]).
     """
     workload = list(workload)
-    gating = gate is not None and evaluate is not None
+    gater = _AccuracyGater(gate, evaluate, evaluate_hashes)
     skip = skip_keys or set()
     results: list[MeasurementResult] = []
-    last_accuracy: dict[str, float] | None = None
-    baseline_score: float | None = None
     for cp in points:
         pending = [wp for wp in workload if (cp.config_hash, wp.label) not in skip]
         if not pending:
@@ -105,18 +140,7 @@ def run_search(
         session = manager.launch(cp.args)
         config_results: list[MeasurementResult] = []
         try:
-            accuracy = None
-            quality_pass = None
-            if gating:
-                if evaluate_hashes is None or cp.config_hash in evaluate_hashes:
-                    last_accuracy = evaluate(session)
-                accuracy = last_accuracy
-                score = accuracy.get(gate.metric) if accuracy else None
-                if cp.label == "baseline" and score is not None:
-                    baseline_score = score
-                quality_pass = (
-                    gate.passes(score, baseline_score) if baseline_score is not None else None
-                )
+            accuracy, quality_pass = gater.stamp(cp, session)
             for wp in pending:
                 res = measure_point(
                     session.client,
@@ -142,14 +166,10 @@ def run_search(
 
 def result_line(res: MeasurementResult) -> str:
     """One JSONL record line for a measurement result."""
-    return json.dumps(asdict(res), default=str)
+    return json_line(asdict(res))
 
 
 def write_results(results: Iterable[MeasurementResult], out_dir: str) -> Path:
-    outdir = Path(out_dir)
-    outdir.mkdir(parents=True, exist_ok=True)
-    path = outdir / "results.jsonl"
-    with path.open("w") as f:
-        for res in results:
-            f.write(result_line(res) + "\n")
-    return path
+    return write_jsonl(
+        (asdict(res) for res in results), Path(out_dir) / "results.jsonl"
+    )

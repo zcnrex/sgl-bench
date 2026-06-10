@@ -28,6 +28,7 @@ from typing import Callable
 
 from . import metrics as M
 from .generate import args_to_cli
+from .jsonl import parse_jsonl
 from .measure import BenchClient, WorkloadPoint
 
 DEFAULT_HOST = "127.0.0.1"
@@ -98,7 +99,7 @@ def parse_result_jsonl(text: str, point: WorkloadPoint | None = None) -> dict:
     Picks the record matching the workload point's batch/input/output when `point` is
     given, else the last record. Raises ValueError when no record is present.
     """
-    records = [json.loads(line) for line in text.splitlines() if line.strip()]
+    records = parse_jsonl(text)
     if not records:
         raise ValueError("bench_one_batch_server produced no result record")
     if point is not None:
@@ -169,13 +170,50 @@ def wait_until_ready(
         sleep(interval_s)
 
 
-def _default_run_bench(cmd: list[str], result_path: str) -> str:
+def _run_cmd(cmd: list[str]) -> None:
     subprocess.run(cmd, check=True)
+
+
+def _default_run_bench(cmd: list[str], result_path: str) -> str:
+    _run_cmd(cmd)
     p = Path(result_path)
     return p.read_text() if p.exists() else ""
 
 
-class BenchOneBatchClient:
+class _SubprocessBenchClient:
+    """Shared temp-dir -> subprocess -> parse path for the bench transports.
+
+    Subclasses supply the command builder and the result parser; the warmup/measure
+    BenchClient surface and the result-file plumbing live here.
+    """
+
+    tool: str
+
+    def __init__(
+        self, run_bench: Callable[[list[str], str], str] = _default_run_bench
+    ) -> None:
+        self._run_bench = run_bench
+
+    def _bench_cmd(self, point: WorkloadPoint, result_path: str) -> list[str]:
+        raise NotImplementedError
+
+    def _parse(self, text: str, point: WorkloadPoint) -> dict[str, float]:
+        raise NotImplementedError
+
+    def _run(self, point: WorkloadPoint) -> dict[str, float]:
+        with tempfile.TemporaryDirectory() as d:
+            result_path = os.path.join(d, "result.jsonl")
+            text = self._run_bench(self._bench_cmd(point, result_path), result_path)
+            return self._parse(text, point)
+
+    def warmup(self, point: WorkloadPoint) -> None:
+        self._run(point)
+
+    def measure(self, point: WorkloadPoint) -> dict[str, float]:
+        return self._run(point)
+
+
+class BenchOneBatchClient(_SubprocessBenchClient):
     """BenchClient over `sglang.bench_one_batch_server` ([[RFC-0001:C-BASELINE-ANCHOR]])."""
 
     tool = "bench_one_batch_server"
@@ -188,25 +226,18 @@ class BenchOneBatchClient:
         extra_args=(),
         run_bench: Callable[[list[str], str], str] = _default_run_bench,
     ) -> None:
+        super().__init__(run_bench)
         self.base_url = base_url
         self.model = model
         self.extra_args = tuple(extra_args)
-        self._run_bench = run_bench
 
-    def _run(self, point: WorkloadPoint) -> dict[str, float]:
-        with tempfile.TemporaryDirectory() as d:
-            result_path = os.path.join(d, "result.jsonl")
-            cmd = build_bench_cmd(
-                self.base_url, point, result_path, self.model, self.extra_args
-            )
-            text = self._run_bench(cmd, result_path)
-            return record_to_metrics(parse_result_jsonl(text, point))
+    def _bench_cmd(self, point: WorkloadPoint, result_path: str) -> list[str]:
+        return build_bench_cmd(
+            self.base_url, point, result_path, self.model, self.extra_args
+        )
 
-    def warmup(self, point: WorkloadPoint) -> None:
-        self._run(point)
-
-    def measure(self, point: WorkloadPoint) -> dict[str, float]:
-        return self._run(point)
+    def _parse(self, text: str, point: WorkloadPoint) -> dict[str, float]:
+        return record_to_metrics(parse_result_jsonl(text, point))
 
 
 def _terminate(proc, timeout: float = 30.0) -> None:
@@ -373,10 +404,6 @@ def _latest_metrics_json(out_dir: str) -> Path:
     return paths[-1]
 
 
-def _default_run_eval(cmd: list[str]) -> None:
-    subprocess.run(cmd, check=True)
-
-
 class GSM8KEvaluator:
     """AccuracyEvaluator over `sgl-eval run gsm8k` ([[RFC-0001:C-QUALITY-GATE]])."""
 
@@ -393,7 +420,7 @@ class GSM8KEvaluator:
         temperature: float | None = None,
         model: str | None = None,
         out_dir: str | None = None,
-        run_eval: Callable[[list[str]], None] = _default_run_eval,
+        run_eval: Callable[[list[str]], None] = _run_cmd,
     ) -> None:
         self.base_url = base_url
         self.metric = metric
@@ -476,10 +503,10 @@ def parse_serving_metrics(text: str, point: WorkloadPoint) -> dict[str, float]:
     throughput is derived from ITL (concurrency / ITL), not the OSL-blended
     output_throughput, per [[RFC-0001:C-OBJECTIVE]]. TTFT is carried report-only.
     """
-    lines = [ln for ln in text.splitlines() if ln.strip()]
-    if not lines:
+    records = parse_jsonl(text)
+    if not records:
         raise ValueError("bench_serving produced no result line")
-    rec = json.loads(lines[-1])
+    rec = records[-1]
     out: dict[str, float] = {}
     itl = rec.get("median_itl_ms")
     if itl is not None and float(itl) > 0:
@@ -494,7 +521,7 @@ def parse_serving_metrics(text: str, point: WorkloadPoint) -> dict[str, float]:
     return out
 
 
-class BenchServingClient:
+class BenchServingClient(_SubprocessBenchClient):
     """BenchClient over `sglang.bench_serving` — percentile-ITL frontier transport.
 
     A richer alternative to BenchOneBatchClient; reconcile against it before relying on its
@@ -515,6 +542,7 @@ class BenchServingClient:
         extra_args=(),
         run_bench: Callable[[list[str], str], str] = _default_run_bench,
     ) -> None:
+        super().__init__(run_bench)
         self.base_url = base_url
         self.backend = backend
         self.tokenizer = tokenizer
@@ -522,22 +550,14 @@ class BenchServingClient:
         self.request_rate = request_rate
         self.dataset = dataset
         self.extra_args = tuple(extra_args)
-        self._run_bench = run_bench
 
-    def _run(self, point: WorkloadPoint) -> dict[str, float]:
-        with tempfile.TemporaryDirectory() as d:
-            out = os.path.join(d, "serving.jsonl")
-            cmd = build_serving_cmd(
-                self.base_url, point, out,
-                backend=self.backend, dataset=self.dataset,
-                num_prompts=self.num_prompts, request_rate=self.request_rate,
-                tokenizer=self.tokenizer, extra=self.extra_args,
-            )
-            text = self._run_bench(cmd, out)
-            return parse_serving_metrics(text, point)
+    def _bench_cmd(self, point: WorkloadPoint, result_path: str) -> list[str]:
+        return build_serving_cmd(
+            self.base_url, point, result_path,
+            backend=self.backend, dataset=self.dataset,
+            num_prompts=self.num_prompts, request_rate=self.request_rate,
+            tokenizer=self.tokenizer, extra=self.extra_args,
+        )
 
-    def warmup(self, point: WorkloadPoint) -> None:
-        self._run(point)
-
-    def measure(self, point: WorkloadPoint) -> dict[str, float]:
-        return self._run(point)
+    def _parse(self, text: str, point: WorkloadPoint) -> dict[str, float]:
+        return parse_serving_metrics(text, point)
