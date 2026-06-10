@@ -52,6 +52,14 @@ class SelectTest(unittest.TestCase):
         self.assertEqual(len(pts), 1)
         self.assertEqual(pts[0].label, "baseline")
 
+    def test_only_config_filters_by_hash_or_label(self):
+        baseline = run.select_points(self.branch, "ofat", 0)[0]
+        sub = run.select_points(self.branch, "ofat", 0, only_config=baseline.config_hash)
+        self.assertEqual([p.config_hash for p in sub], [baseline.config_hash])
+        by_label = run.select_points(self.branch, "ofat", 0, only_config="mamba-backend=triton")
+        self.assertTrue(all("mamba-backend=triton" in p.label for p in by_label))
+        self.assertEqual(len(by_label), 1)
+
     def test_workload_override_and_limit(self):
         axes = {"isl_osl_pairs": [[8192, 1024], [60000, 20]], "concurrency": [1, 8, 32]}
         pts = run.select_workload(axes, "iter", concurrency=[1], isl_osl=["8192x1024"], limit=0)

@@ -27,9 +27,12 @@ from .sglang_adapter import (
 DEFAULT_OUT_DIR = "out"
 
 
-def select_points(branch, mode: str, limit: int):
-    """Generator points for the run, optionally truncated to the first `limit`."""
+def select_points(branch, mode: str, limit: int, only_config: str | None = None):
+    """Generator points for the run; optionally restrict to configs matching `only_config`
+    (substring of config_hash or label) and/or truncate to the first `limit`."""
     points = generate_ofat(branch) if mode == "ofat" else generate_grid(branch)
+    if only_config:
+        points = [p for p in points if only_config in p.config_hash or only_config in p.label]
     return points[:limit] if limit and limit > 0 else points
 
 
@@ -55,6 +58,7 @@ def main(argv=None) -> int:
     p.add_argument("--branch", required=True, help="Precision branch name")
     p.add_argument("--mode", choices=["ofat", "grid"], default="ofat")
     p.add_argument("--limit-configs", type=int, default=0, help="Run only the first N configs (0=all)")
+    p.add_argument("--only-config", default=None, help="Run only configs matching this config_hash/label substring")
     p.add_argument("--role", choices=["iter", "report"], default="iter")
     p.add_argument("--concurrency", type=int, nargs="+", default=None, help="Override workload concurrency list")
     p.add_argument("--isl-osl", nargs="+", default=None, help="Override workload pairs as ISLxOSL")
@@ -77,7 +81,9 @@ def main(argv=None) -> int:
     cfg = load_config(a.config)
     branch = cfg.branch(a.branch)
     model = a.model or branch.checkpoint or cfg.model
-    points = select_points(branch, a.mode, a.limit_configs)
+    points = select_points(branch, a.mode, a.limit_configs, a.only_config)
+    if not points:
+        p.error(f"no configs matched --only-config {a.only_config!r}")
     workload = select_workload(cfg.workload_axes, a.role, a.concurrency, a.isl_osl, a.limit_workload)
 
     print(
