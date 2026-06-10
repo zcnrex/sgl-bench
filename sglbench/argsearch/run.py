@@ -18,6 +18,7 @@ from pathlib import Path
 
 from .driver import result_line, run_search, workload_points
 from .generate import (
+    DEFAULT_OUT_DIR,
     accuracy_invariant_search,
     baseline_config_point,
     generate_grid,
@@ -39,8 +40,6 @@ from .sglang_adapter import (
     build_bench_cmd,
     build_launch_cmd,
 )
-
-DEFAULT_OUT_DIR = "out"
 
 TRANSPORT_TOOL = {"one-batch": "bench_one_batch_server", "serving": "bench_serving"}
 
@@ -70,7 +69,7 @@ def select_points(branch, mode: str, limit: int, only_config: str | None = None)
     points = generate_ofat(branch) if mode == "ofat" else generate_grid(branch)
     if only_config:
         points = [p for p in points if only_config in p.config_hash or only_config in p.label]
-    return points[:limit] if limit and limit > 0 else points
+    return points[:limit] if limit > 0 else points
 
 
 def select_workload(axes: dict, role: str, concurrency, isl_osl, limit: int):
@@ -84,7 +83,7 @@ def select_workload(axes: dict, role: str, concurrency, isl_osl, limit: int):
             key = "report_isl_osl_pairs" if role == "report" else "isl_osl_pairs"
             axes[key] = pairs
     points = workload_points(axes, role)
-    return points[:limit] if limit and limit > 0 else points
+    return points[:limit] if limit > 0 else points
 
 
 def main(argv=None) -> int:
@@ -195,8 +194,8 @@ def main(argv=None) -> int:
         else:
             baseline_cp = baseline_config_point(branch)
             points = [baseline_cp] + [pt for pt in points if pt.config_hash != baseline_cp.config_hash]
-            if spot.config_hash not in {pt.config_hash for pt in points}:
-                points = points + [spot]
+            if all(pt.config_hash != spot.config_hash for pt in points):
+                points.append(spot)
             evaluate_hashes = {baseline_cp.config_hash, spot.config_hash}
             print(
                 f"  accuracy-invariant search: per-config eval skipped; evaluating "

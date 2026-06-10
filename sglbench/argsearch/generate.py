@@ -24,6 +24,7 @@ from .measure import label_slug, model_slug
 from .schema import Branch, Constraint, SearchConfig, _key
 
 DEFAULT_OUT_DIR = "out"
+DEFAULT_RESULTS = f"{DEFAULT_OUT_DIR}/results.jsonl"
 
 
 def config_hash(args: dict) -> str:
@@ -67,7 +68,8 @@ def _assemble(branch: Branch, overrides: dict) -> dict:
 
 def generate_ofat(branch: Branch) -> list[ConfigPoint]:
     base = _assemble(branch, {})
-    points = [ConfigPoint(branch.name, "ofat", "baseline", base, branch.branch_keys())]
+    keys = branch.branch_keys()
+    points = [ConfigPoint(branch.name, "ofat", "baseline", base, keys)]
     seen = {points[0].config_hash}
     for cand in branch.candidate:
         base_val = branch.baseline[cand.name]
@@ -77,7 +79,7 @@ def generate_ofat(branch: Branch) -> list[ConfigPoint]:
             cfg = _assemble(branch, {cand.name: v})
             if not is_valid(cfg, branch.constraints):
                 continue
-            cp = ConfigPoint(branch.name, "ofat", f"{cand.name}={v}", cfg, branch.branch_keys())
+            cp = ConfigPoint(branch.name, "ofat", f"{cand.name}={v}", cfg, keys)
             if cp.config_hash in seen:
                 continue
             seen.add(cp.config_hash)
@@ -106,6 +108,7 @@ def generate_grid(branch: Branch, grid_args=None) -> list[ConfigPoint]:
     pins = {} if branch.focused_grid is None else dict(branch.focused_grid.pins)
     pins = {k: v for k, v in pins.items() if k not in set(names)}
     value_lists = [next(c.values for c in branch.candidate if c.name == n) for n in names]
+    keys = branch.branch_keys()
     points: list[ConfigPoint] = []
     seen: set[str] = set()
     for combo in itertools.product(*value_lists):
@@ -114,7 +117,7 @@ def generate_grid(branch: Branch, grid_args=None) -> list[ConfigPoint]:
         if not is_valid(cfg, branch.constraints):
             continue
         label = ",".join(f"{n}={v}" for n, v in swept.items())
-        cp = ConfigPoint(branch.name, "grid", label, cfg, branch.branch_keys())
+        cp = ConfigPoint(branch.name, "grid", label, cfg, keys)
         if cp.config_hash in seen:
             continue
         seen.add(cp.config_hash)
@@ -272,7 +275,7 @@ def main(argv=None) -> int:
     p.add_argument("--grid-args", nargs="+", default=[], help="Candidate names for --mode grid")
     p.add_argument(
         "--results",
-        default=f"{DEFAULT_OUT_DIR}/results.jsonl",
+        default=DEFAULT_RESULTS,
         help="OFAT results JSONL; when present and a quality_gate is defined, --mode grid "
         "refuses pins whose OFAT config failed the gate (C-QUALITY-GATE)",
     )

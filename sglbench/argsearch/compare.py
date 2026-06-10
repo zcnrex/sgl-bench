@@ -13,10 +13,8 @@ import argparse
 import sys
 
 from . import metrics as M
-from .generate import generate_ofat, load_config
+from .generate import DEFAULT_RESULTS, generate_ofat, load_config
 from .objective import load_results
-
-DEFAULT_RESULTS = "out/results.jsonl"
 
 
 def _by_config_workload(records: list[dict]) -> dict[tuple[str, int], dict]:

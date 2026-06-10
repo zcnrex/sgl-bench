@@ -14,10 +14,9 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 
 from . import metrics as M
-from .generate import _assemble, config_hash, load_config
+from .generate import DEFAULT_RESULTS, _assemble, config_hash, load_config
 from .schema import SLO, Branch, QualityGate
 
-DEFAULT_RESULTS = "out/results.jsonl"
 DEFAULT_FRONTIER = "out/frontier.jsonl"
 
 
@@ -56,6 +55,15 @@ def branch_baseline_score(
         if (branch is None or r.get("branch") == branch) and r.get("config_label") == "baseline":
             return (r.get("accuracy") or {}).get(gate.metric)
     return None
+
+
+def gate_baseline_score(
+    records: list[dict], branch: str | None, gate: QualityGate | None
+) -> float | None:
+    """The branch baseline score when a gate is defined, else None (no gate, no reference)."""
+    if gate is None:
+        return None
+    return branch_baseline_score(records, branch, gate)
 
 
 def record_quality_pass(
@@ -147,7 +155,7 @@ def build_frontier(
     excluded from the acceptable results but remains in the record stream
     ([[RFC-0001:C-QUALITY-GATE]]).
     """
-    baseline_score = branch_baseline_score(records, branch, gate) if gate is not None else None
+    baseline_score = gate_baseline_score(records, branch, gate)
     selected = [
         r
         for r in records
@@ -172,7 +180,7 @@ def gate_failed_pins(
     fg = branch.focused_grid
     if fg is None:
         return []
-    baseline_score = branch_baseline_score(records, branch.name, gate)
+    baseline_score = gate_baseline_score(records, branch.name, gate)
     by_hash = {r.get("config_hash"): r for r in records}
     offenders: list[dict] = []
     for arg, value in fg.pins.items():
@@ -269,7 +277,7 @@ def main(argv=None) -> int:
     all_frontier: list[FrontierEntry] = []
     for bn in branch_names:
         in_scope = [r for r in records if r.get("branch") == bn]
-        baseline_score = branch_baseline_score(records, bn, gate) if gate is not None else None
+        baseline_score = gate_baseline_score(records, bn, gate)
         passing, frontier = build_frontier(
             records, cfg.slo, branch=bn, stat=a.stat, gate=effective_gate
         )

@@ -149,27 +149,30 @@ class Branch(BaseModel):
     @model_validator(mode="after")
     def _validate(self) -> "Branch":
         names = self.candidate_names
+        cand = set(names)
 
-        if len(names) != len(set(names)):
+        if len(names) != len(cand):
             raise ValueError(f"branch '{self.name}': duplicate candidate names")
         if len(names) > MAX_CANDIDATES:
             raise ValueError(
                 f"branch '{self.name}': {len(names)} candidates exceeds cap {MAX_CANDIDATES} (C-SCOPE)"
             )
 
-        overlap = set(names) & set(self.fixed)
+        declared = cand | set(self.fixed)
+
+        overlap = cand & set(self.fixed)
         if overlap:
             raise ValueError(
                 f"branch '{self.name}': args in both fixed and candidate (C-SCOPE): {sorted(overlap)}"
             )
 
-        spec = (set(names) | set(self.fixed)) & SPEC_DECODE_ARGS
+        spec = declared & SPEC_DECODE_ARGS
         if spec:
             raise ValueError(
                 f"branch '{self.name}': speculative-decode args out of scope (C-SCOPE): {sorted(spec)}"
             )
 
-        weight_precision = set(names) & WEIGHT_PRECISION_ARGS
+        weight_precision = cand & WEIGHT_PRECISION_ARGS
         if weight_precision:
             raise ValueError(
                 f"branch '{self.name}': weight-precision args define the checkpoint and must be "
@@ -188,7 +191,7 @@ class Branch(BaseModel):
                     f"is not one of its candidate values"
                 )
 
-        extra = set(self.baseline) - set(names)
+        extra = set(self.baseline) - cand
         if extra:
             raise ValueError(
                 f"branch '{self.name}': baseline assigns non-candidate args "
@@ -197,7 +200,6 @@ class Branch(BaseModel):
 
         if self.focused_grid is not None:
             fg = self.focused_grid
-            cand = set(names)
             unknown = [a for a in fg.args if a not in cand]
             if unknown:
                 raise ValueError(
@@ -228,7 +230,6 @@ class Branch(BaseModel):
                     f"OFAT-best in focused_grid.pins (C-SEARCH-STRATEGY): {unpinned}"
                 )
 
-        declared = set(names) | set(self.fixed)
         for con in self.constraints:
             refs = set(con.when) | set(con.forbid) | set(con.require)
             undeclared = refs - declared

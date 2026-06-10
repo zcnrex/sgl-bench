@@ -1,0 +1,43 @@
+#:schema ../schema/work.schema.json
+
+[govctl]
+id = "WI-2026-06-10-007"
+title = "Clean up dead code and simplify logic after v0.6.0 branch-schema migration"
+status = "done"
+created = "2026-06-10"
+started = "2026-06-10"
+completed = "2026-06-10"
+refs = ["RFC-0001"]
+
+[content]
+description = "Behavior-preserving cleanup of the argsearch package after the v0.6.0 within-checkpoint Branch migration and the compare/inspect view additions. Several iterations left small duplications and over-complex arms; consolidate them so the codebase reads cleanly without changing any RFC-0001 observable behavior. Scope: (1) deduplicate cross-module default constants (DEFAULT_OUT_DIR in generate.py/run.py; DEFAULT_RESULTS in compare.py/objective.py) into a single shared definition; (2) factor the repeated branch-baseline-score + gate retrieval pattern in objective.py (build_frontier / gate_failed_pins / main) into one helper; (3) simplify redundant conditional arms (run.py limit guard, run.py baseline+spot membership reconstruction, schema.py Branch._validate duplicate set(names) scans); (4) cache branch.branch_keys() out of the generate.py loops. Out of scope: the precision_branches backward-compat alias (schema.py:319) is intentionally kept and tested — do not remove."
+
+[[content.acceptance_criteria]]
+text = "govctl check passes"
+status = "done"
+category = "chore"
+
+[[content.acceptance_criteria]]
+text = "full pytest suite passes with no behavior change (test_compare, test_run, test_objective, test_generate, test_schema, test_measure, test_driver)"
+status = "done"
+category = "chore"
+
+[[content.acceptance_criteria]]
+text = "precision_branches backward-compat alias left intact and its test still passes"
+status = "done"
+category = "chore"
+
+[[content.acceptance_criteria]]
+text = "DEFAULT_OUT_DIR and DEFAULT_RESULTS each defined once and imported where needed; no duplicate literals remain"
+status = "done"
+category = "chore"
+
+[[content.acceptance_criteria]]
+text = "objective.py branch-baseline-score + gate retrieval consolidated into a single helper used by build_frontier, gate_failed_pins, and main"
+status = "done"
+category = "chore"
+
+[[content.acceptance_criteria]]
+text = "redundant conditional arms simplified (run.py limit guard, run.py baseline+spot reconstruction, schema.py Branch._validate set(names) scans); branch.branch_keys() hoisted out of generate.py loops"
+status = "done"
+category = "chore"
